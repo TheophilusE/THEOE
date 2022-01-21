@@ -1,5 +1,5 @@
 //
-
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -308,7 +308,7 @@ unsigned Drawable::GetShadowMaskInZone() const
 
 Geometry* Drawable::GetGeometryIfNotEmpty(Geometry* geometry)
 {
-    return (geometry && geometry->GetIndexCount()) ? geometry : nullptr;
+    return (geometry && geometry->GetEffectiveIndexCount() > 0) ? geometry : nullptr;
 }
 
 unsigned Drawable::RecalculatePipelineStateHash() const

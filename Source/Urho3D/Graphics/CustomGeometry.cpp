@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -407,6 +408,7 @@ void CustomGeometry::Commit()
     }
 
     vertexBuffer_->ClearDataLost();
+    SetNumGeometries(geometries_.size());
 }
 
 void CustomGeometry::SetMaterial(Material* material)

@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -218,7 +219,8 @@ VertexBuffer* Geometry::GetVertexBuffer(unsigned index) const
 
 unsigned Geometry::GetPrimitiveCount() const
 {
-    const unsigned indexCount = indexBuffer_ ? indexCount_ : vertexCount_;
+    const unsigned indexCount = GetEffectiveIndexCount();
+
     switch (primitiveType_)
     {
     case TRIANGLE_LIST:

@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -116,6 +117,9 @@ public:
     /// Return LOD distance.
     /// @property
     float GetLodDistance() const { return lodDistance_; }
+
+    /// Return index or vertex count depending on whether the index buffer is used.
+    unsigned GetEffectiveIndexCount() const { return indexBuffer_ ? indexCount_ : vertexCount_; }
 
     /// Return number of primitives.
     unsigned GetPrimitiveCount() const;
