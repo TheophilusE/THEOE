@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -413,6 +414,103 @@ public:
     bool Equals(const Quaternion& rhs, float eps = M_EPSILON) const
     {
         return Urho3D::Equals(w_, rhs.w_, eps) && Urho3D::Equals(x_, rhs.x_, eps) && Urho3D::Equals(y_, rhs.y_, eps) && Urho3D::Equals(z_, rhs.z_, eps);
+    }
+
+    // Is the dot product of two quaternions within tolerance for them to be considered equal?
+    bool IsEqualUsingDot(float dot)
+    {
+        // Returns false in the presence of NaN values.
+        return dot > 1.0f - M_EPSILON;
+    }
+
+     /// Returns the angle in degrees between two rotations /a/ and /b/.
+    float Angle(Quaternion b)
+    {
+        float dot = DotProduct(b);
+        return IsEqualUsingDot(dot) ? 0.0f : Acos(Min(Abs(dot), 1.0F)) * 2.0F * M_RADTODEG;
+    }
+
+    /// Find the angular distance between two rotation quaternions (in radians).
+    float AngularDistance(const Quaternion& Q) const
+    {
+        float InnerProd = x_ * Q.x_ + y_ * Q.y_ + z_ * Q.z_ + w_ * Q.w_;
+        return Acos((2 * InnerProd * InnerProd) - 1.0f);
+    }
+
+    /// Rotate a vector by this quaternion.
+    Vector3 RotateVector(Vector3 V)
+    {
+        // http://people.csail.mit.edu/bkph/articles/Quaternions.pdf
+        // V' = V + 2w(Q x V) + (2Q x (Q x V))
+        // refactor:
+        // V' = V + w(2(Q x V)) + (Q x (2(Q x V)))
+        // T = 2(Q x V);
+        // V' = V + w*(T) + (Q x T)
+
+        const Vector3 Q(x_, y_, z_);
+        const Vector3 T = 2.f * Q.CrossProduct(V);
+        const Vector3 Result = V + (w_ * T) + Q.CrossProduct(T);
+        return Result;
+    }
+
+    /// Rotate a vector by the inverse of this quaternion.
+    Vector3 UnrotateVector(Vector3 V) const
+    {
+        const Vector3 Q(-x_, -y_, -z_); // Inverse
+        const Vector3 T = 2.f * Q.CrossProduct(V);
+        const Vector3 Result = V + (w_ * T) + Q.CrossProduct(T);
+        return Result;
+    }
+
+    /// This function is similar to MoveTowards except that the vector is treated as a direction rather than a position.
+    /// The current vector will be rotated round toward the target direction by an angle of maxRadiansDelta, although it
+    /// will land exactly on the target rather than overshoot. If the magnitudes of current and target are different,
+    /// then the magnitude of the result will be linearly interpolated during the rotation. If a negative value is used
+    /// for maxRadiansDelta, the vector will rotate away from target/ until it is pointing in exactly the opposite
+    /// direction, then stops.
+    Quaternion RotateTowards(Quaternion to, float maxDegreesDelta)
+    {
+        float angle = Angle(to);
+
+        if (angle == 0.0f)
+            return to;
+
+        return Slerp(to, Min(1.0f, maxDegreesDelta / angle));
+    }
+
+    /// Rotate towards another vector
+    Quaternion RotateTowards(const Vector3& vectorOne, const Vector3& vectorTwo)
+    {
+        Quaternion q;
+        float dot = vectorOne.DotProduct(vectorTwo);
+
+        if (dot < -0.999999)
+        {
+            Vector3 a = vectorOne.CrossProduct(vectorTwo);
+            q.x_ = a.x_;
+            q.y_ = a.y_;
+            q.z_ = a.z_;
+
+            q.w_ = sqrt((Square(vectorOne.Length())) * (Square(vectorTwo.Length())) + vectorOne.DotProduct(vectorTwo));
+
+            return q;
+        }
+        else if (dot > 0.999999)
+        {
+            return Quaternion(1.f, 0.f, 0.f, 0.f);
+        }
+        else
+        {
+            Vector3 a = vectorOne.CrossProduct(vectorTwo);
+            q.x_ = a.x_;
+            q.y_ = a.y_;
+            q.z_ = a.z_;
+
+            q.w_ = 1 + dot;
+            q.Normalize();
+
+            return q;
+        }
     }
 
     /// Return whether any element is NaN.
