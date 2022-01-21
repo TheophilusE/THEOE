@@ -27,6 +27,7 @@
 #include <Urho3D/Graphics/Material.h>
 #include <Urho3D/Graphics/Texture2D.h>
 #include <Urho3D/Graphics/TextureCube.h>
+#include <Urho3D/Graphics/ParticleEffect.h>
 #include <Urho3D/IO/FileSystem.h>
 #include <Urho3D/Resource/ResourceCache.h>
 #include <Urho3D/Resource/XMLFile.h>
@@ -222,6 +223,10 @@ bool GetContentResourceType(Context* context, const ea::string& resourcePath, Re
         break;
     }
     case CTYPE_PARTICLE:
+    {
+        types.emplace_back(ParticleEffect::GetTypeStatic());
+        break;
+    }
     case CTYPE_RENDERPATH:
     case CTYPE_TEXTUREXML:
     {
