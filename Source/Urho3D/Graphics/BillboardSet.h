@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -114,6 +115,12 @@ public:
     /// Set how the billboards should rotate in relation to the camera. Default is to follow camera rotation on all axes (FC_ROTATE_XYZ).
     /// @property
     void SetFaceCameraMode(FaceCameraMode mode);
+    /// Set billboard override rotation in relation to the camera enabled.
+    /// @property
+    void SetUseOverrideRotation(bool enable);
+    /// Set override rotation in relation to the camera.
+    /// @property
+    void SetOverrideRotation(Quaternion rotation);
     /// Set minimal angle between billboard normal and look-at direction.
     /// @property
     void SetMinAngle(float angle);
@@ -158,6 +165,14 @@ public:
     /// @property
     FaceCameraMode GetFaceCameraMode() const { return faceCameraMode_; }
 
+    /// Return true if billboard override rotation in relation to the camera is enabled.
+    /// @property
+    bool GetUseOverrideRotation() const { return useOverrideRotation_; }
+
+    /// Return override rotation in relation to the camera.
+    /// @property
+    Quaternion GetOverrideRotation() const { return overrideRotation_; }
+
     /// Return minimal angle between billboard normal and look-at direction.
     /// @property
     float GetMinAngle() const { return minAngle_; }
@@ -201,6 +216,10 @@ protected:
     bool fixedScreenSize_;
     /// Billboard rotation mode in relation to the camera.
     FaceCameraMode faceCameraMode_;
+    /// Use custom rotation for billboard. Overrides face camera mode.
+    bool useOverrideRotation_;
+    /// Billboard override rotation.
+    Quaternion overrideRotation_;
     /// Minimal angle between billboard normal and look-at direction.
     float minAngle_;
 

@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -85,6 +86,8 @@ BillboardSet::BillboardSet(Context* context) :
     sorted_(false),
     fixedScreenSize_(false),
     faceCameraMode_(FC_ROTATE_XYZ),
+    useOverrideRotation_(false),
+    overrideRotation_(Quaternion()),
     minAngle_(0.0f),
     geometry_(context->CreateObject<Geometry>()),
     vertexBuffer_(context_->CreateObject<VertexBuffer>()),
@@ -123,6 +126,8 @@ void BillboardSet::RegisterObject(Context* context)
     URHO3D_ACCESSOR_ATTRIBUTE("Can Be Occluded", IsOccludee, SetOccludee, bool, true, AM_DEFAULT);
     URHO3D_ATTRIBUTE("Cast Shadows", bool, castShadows_, false, AM_DEFAULT);
     URHO3D_ENUM_ACCESSOR_ATTRIBUTE("Face Camera Mode", GetFaceCameraMode, SetFaceCameraMode, FaceCameraMode, faceCameraModeNames, FC_ROTATE_XYZ, AM_DEFAULT);
+    URHO3D_ACCESSOR_ATTRIBUTE("Use Override Rotation", GetUseOverrideRotation, SetUseOverrideRotation, bool, false, AM_DEFAULT);
+    URHO3D_ACCESSOR_ATTRIBUTE("Override Rotation", GetOverrideRotation, SetOverrideRotation, Quaternion, Quaternion::ZERO, AM_DEFAULT);
     URHO3D_ACCESSOR_ATTRIBUTE("Min Angle", GetMinAngle, SetMinAngle, float, 0.0f, AM_DEFAULT);
     URHO3D_ACCESSOR_ATTRIBUTE("Draw Distance", GetDrawDistance, SetDrawDistance, float, 0.0f, AM_DEFAULT);
     URHO3D_ACCESSOR_ATTRIBUTE("Shadow Distance", GetShadowDistance, SetShadowDistance, float, 0.0f, AM_DEFAULT);
@@ -230,11 +235,20 @@ void BillboardSet::UpdateGeometry(const FrameInfo& frame)
     if (fixedScreenSize_ && viewCameras_.size() > 1)
         CalculateFixedScreenSize(frame);
 
-    // If using camera facing, re-update the rotation for the current view now
-    if (faceCameraMode_ != FC_NONE)
+   // If using camera facing, re-update the rotation for the current view now
+    if (!useOverrideRotation_)
     {
-        transforms_[1] = Matrix3x4(Vector3::ZERO, frame.camera_->GetFaceCameraRotation(node_->GetWorldPosition(),
-            node_->GetWorldRotation(), faceCameraMode_, minAngle_), Vector3::ONE);
+        if (faceCameraMode_ != FC_NONE)
+        {
+            transforms_[1] = Matrix3x4(Vector3::ZERO,
+                frame.camera_->GetFaceCameraRotation(
+                    node_->GetWorldPosition(), node_->GetWorldRotation(), faceCameraMode_, minAngle_),
+                Vector3::ONE);
+        }
+    }
+    else
+    {
+        transforms_[1] = Matrix3x4(Vector3::ZERO, overrideRotation_, Vector3::ONE);
     }
 
     if (bufferSizeDirty_ || indexBuffer_->IsDataLost())
@@ -331,6 +345,18 @@ void BillboardSet::SetFaceCameraMode(FaceCameraMode mode)
         faceCameraMode_ = mode;
         MarkNetworkUpdate();
     }
+}
+
+void BillboardSet::SetUseOverrideRotation(bool enable)
+{
+    useOverrideRotation_ = enable;
+    MarkNetworkUpdate();
+}
+
+void BillboardSet::SetOverrideRotation(Quaternion rotation)
+{
+    overrideRotation_ = rotation;
+    MarkNetworkUpdate();
 }
 
 void BillboardSet::SetMinAngle(float angle)
