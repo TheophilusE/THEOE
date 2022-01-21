@@ -5,7 +5,7 @@ rem and they will be forwarded to cmake.
 
 setlocal enabledelayedexpansion
 
-set "CMAKE_ARGS=%*"
+set "CMAKE_ARGS=%*-DURHO3D_SAMPLES=ON -DURHO3D_TESTING=ON -DURHO3D_CSHARP=OFF"
 
 IF NOT EXIST cmake-build (
     mkdir cmake-build
