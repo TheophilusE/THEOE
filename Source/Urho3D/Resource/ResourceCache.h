@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -343,6 +344,8 @@ template <class T> void ResourceCache::GetResources(ea::vector<T*>& result) cons
         result[i] = static_cast<T*>(resource);
     }
 }
+
+#define URHO3D_RESOURCE(type, path) GetSubsystem<ResourceCache>()->GetResource<type>(path)
 
 /// Register Resource library subsystems and objects.
 /// @nobind
