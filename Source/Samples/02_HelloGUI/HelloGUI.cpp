@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -29,6 +30,7 @@
 #include <Urho3D/UI/Button.h>
 #include <Urho3D/UI/CheckBox.h>
 #include <Urho3D/UI/LineEdit.h>
+#include <Urho3D/UI/MultiLineEdit.h>
 #include <Urho3D/UI/Text.h>
 #include <Urho3D/UI/ToolTip.h>
 #include <Urho3D/UI/UI.h>
@@ -39,10 +41,10 @@
 
 #include <Urho3D/DebugNew.h>
 
-HelloGUI::HelloGUI(Context* context) :
-    Sample(context),
-    uiRoot_(GetSubsystem<UI>()->GetRoot()),
-    dragBeginPosition_(IntVector2::ZERO)
+HelloGUI::HelloGUI(Context* context)
+    : Sample(context)
+    , uiRoot_(GetSubsystem<UI>()->GetRoot())
+    , dragBeginPosition_(IntVector2::ZERO)
 {
 }
 
@@ -90,15 +92,22 @@ void HelloGUI::InitControls()
     lineEdit->SetName("LineEdit");
     lineEdit->SetMinHeight(24);
 
+    // Create a MultiLineEdit
+    auto* multiLineEdit = new MultiLineEdit(context_);
+    multiLineEdit->SetName("Multi-LineEdit");
+    multiLineEdit->SetMinHeight(250);
+
     // Add controls to Window
     window_->AddChild(checkBox);
     window_->AddChild(button);
     window_->AddChild(lineEdit);
+    window_->AddChild(multiLineEdit);
 
     // Apply previously set default style
     checkBox->SetStyleAuto();
     button->SetStyleAuto();
     lineEdit->SetStyleAuto();
+    multiLineEdit->SetStyleAuto();
 }
 
 void HelloGUI::InitWindow()
@@ -149,12 +158,11 @@ void HelloGUI::InitWindow()
 
 void HelloGUI::CreateDraggableFish()
 {
-    auto* cache = GetSubsystem<ResourceCache>();
     auto* graphics = GetSubsystem<Graphics>();
 
     // Create a draggable Fish button
     auto* draggableFish = new Button(context_);
-    draggableFish->SetTexture(cache->GetResource<Texture2D>("Textures/UrhoDecal.dds")); // Set texture
+    draggableFish->SetTexture(URHO3D_RESOURCE(Texture2D, "Textures/UrhoDecal.dds")); // Set texture
     draggableFish->SetBlendMode(BLEND_ADD);
     draggableFish->SetSize(128, 128);
     draggableFish->SetPosition((graphics->GetWidth() - draggableFish->GetWidth()) / 2, 200);
@@ -164,7 +172,8 @@ void HelloGUI::CreateDraggableFish()
     // Add a tooltip to Fish button
     auto* toolTip = new ToolTip(context_);
     draggableFish->AddChild(toolTip);
-    toolTip->SetPosition(IntVector2(draggableFish->GetWidth() + 5, draggableFish->GetWidth() / 2)); // slightly offset from close button
+    toolTip->SetPosition(
+        IntVector2(draggableFish->GetWidth() + 5, draggableFish->GetWidth() / 2)); // slightly offset from close button
     auto* textHolder = new BorderImage(context_);
     toolTip->AddChild(textHolder);
     textHolder->SetStyle("ToolTipBorderImage");
@@ -197,10 +206,7 @@ void HelloGUI::HandleDragEnd(StringHash eventType, VariantMap& eventData) // For
 {
 }
 
-void HelloGUI::HandleClosePressed(StringHash eventType, VariantMap& eventData)
-{
-    CloseSample();
-}
+void HelloGUI::HandleClosePressed(StringHash eventType, VariantMap& eventData) { CloseSample(); }
 
 void HelloGUI::HandleControlClicked(StringHash eventType, VariantMap& eventData)
 {

@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -23,37 +24,37 @@
 #include <Urho3D/Core/CoreEvents.h>
 #include <Urho3D/Engine/Engine.h>
 #include <Urho3D/Graphics/Graphics.h>
+#include <Urho3D/Graphics/Model.h>
+#include <Urho3D/Graphics/Octree.h>
+#include <Urho3D/Graphics/StaticModel.h>
+#include <Urho3D/Graphics/Technique.h>
 #include <Urho3D/Graphics/Texture2D.h>
 #include <Urho3D/Graphics/Zone.h>
-#include <Urho3D/Graphics/StaticModel.h>
-#include <Urho3D/Graphics/Model.h>
-#include <Urho3D/Graphics/Technique.h>
-#include <Urho3D/Graphics/Octree.h>
 #include <Urho3D/Input/Input.h>
 #include <Urho3D/Resource/ResourceCache.h>
 #include <Urho3D/UI/Button.h>
 #include <Urho3D/UI/CheckBox.h>
 #include <Urho3D/UI/LineEdit.h>
+#include <Urho3D/UI/ListView.h>
+#include <Urho3D/UI/MultiLineEdit.h>
 #include <Urho3D/UI/Text.h>
 #include <Urho3D/UI/ToolTip.h>
 #include <Urho3D/UI/UI.h>
+#include <Urho3D/UI/UIComponent.h>
 #include <Urho3D/UI/UIEvents.h>
 #include <Urho3D/UI/Window.h>
-#include <Urho3D/UI/ListView.h>
-#include <Urho3D/UI/UIComponent.h>
 
 #include "Hello3DUI.h"
 
 #include <Urho3D/DebugNew.h>
 
-
-Hello3DUI::Hello3DUI(Context* context) :
-    Sample(context),
-    uiRoot_(GetSubsystem<UI>()->GetRoot()),
-    dragBeginPosition_(IntVector2::ZERO),
-    animateCube_(true),
-    renderOnCube_(false),
-    drawDebug_(false)
+Hello3DUI::Hello3DUI(Context* context)
+    : Sample(context)
+    , uiRoot_(GetSubsystem<UI>()->GetRoot())
+    , dragBeginPosition_(IntVector2::ZERO)
+    , animateCube_(true)
+    , renderOnCube_(false)
+    , drawDebug_(false)
 {
 }
 
@@ -104,15 +105,22 @@ void Hello3DUI::InitControls()
     lineEdit->SetName("LineEdit");
     lineEdit->SetMinHeight(24);
 
+    // Create a MultiLineEdit
+    auto* multiLineEdit = new MultiLineEdit(context_);
+    multiLineEdit->SetName("Multi-LineEdit");
+    multiLineEdit->SetMinHeight(250);
+
     // Add controls to Window
     window_->AddChild(checkBox);
     window_->AddChild(button);
     window_->AddChild(lineEdit);
+    window_->AddChild(multiLineEdit);
 
     // Apply previously set default style
     checkBox->SetStyleAuto();
     button->SetStyleAuto();
     lineEdit->SetStyleAuto();
+    multiLineEdit->SetStyleAuto();
 
     instructions_ = new Text(context_);
     instructions_->SetStyleAuto();
@@ -185,8 +193,6 @@ void Hello3DUI::InitWindow()
 
 void Hello3DUI::InitScene()
 {
-    auto* cache = GetSubsystem<ResourceCache>();
-
     scene_ = new Scene(context_);
     scene_->CreateComponent<Octree>();
     auto* zone = scene_->CreateComponent<Zone>();
@@ -202,7 +208,7 @@ void Hello3DUI::InitScene()
 
     // Create a box model and hide it initially.
     auto* boxModel = boxNode->CreateComponent<StaticModel>();
-    boxModel->SetModel(cache->GetResource<Model>("Models/Box.mdl"));
+    boxModel->SetModel(URHO3D_RESOURCE(Model, "Models/Box.mdl"));
     boxNode->SetEnabled(false);
 
     // Create a camera.
@@ -238,7 +244,8 @@ void Hello3DUI::CreateDraggableFish()
     // Add a tooltip to Fish button
     auto* toolTip = new ToolTip(context_);
     draggableFish->AddChild(toolTip);
-    toolTip->SetPosition(IntVector2(draggableFish->GetWidth() + 5, draggableFish->GetWidth() / 2)); // slightly offset from close button
+    toolTip->SetPosition(
+        IntVector2(draggableFish->GetWidth() + 5, draggableFish->GetWidth() / 2)); // slightly offset from close button
     auto* textHolder = new BorderImage(context_);
     toolTip->AddChild(textHolder);
     textHolder->SetStyle("ToolTipBorderImage");
@@ -271,10 +278,7 @@ void Hello3DUI::HandleDragEnd(StringHash eventType, VariantMap& eventData) // Fo
 {
 }
 
-void Hello3DUI::HandleClosePressed(StringHash eventType, VariantMap& eventData)
-{
-    CloseSample();
-}
+void Hello3DUI::HandleClosePressed(StringHash eventType, VariantMap& eventData) { CloseSample(); }
 
 void Hello3DUI::HandleControlClicked(StringHash eventType, VariantMap& eventData)
 {

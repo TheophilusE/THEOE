@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -48,6 +49,7 @@
 #include "../UI/FileSelector.h"
 #include "../UI/Font.h"
 #include "../UI/LineEdit.h"
+#include "../UI/MultiLineEdit.h"
 #include "../UI/ListView.h"
 #include "../UI/MessageBox.h"
 #include "../UI/ProgressBar.h"
@@ -2146,6 +2148,7 @@ void RegisterUILibrary(Context* context)
     Window::RegisterObject(context);
     View3D::RegisterObject(context);
     LineEdit::RegisterObject(context);
+    MultiLineEdit::RegisterObject(context);
     Slider::RegisterObject(context);
     ScrollBar::RegisterObject(context);
     ScrollView::RegisterObject(context);
