@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2020-2021 Theophilus Eriata.
+// Copyright (c) 2020-2022 Theophilus Eriata.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,8 +23,8 @@
 #pragma once
 
 #include <Urho3D/Core/Context.h>
-#include <Urho3D/Scene/Node.h>
 #include <Urho3D/Scene/LogicComponent.h>
+#include <Urho3D/Scene/Node.h>
 
 namespace Urho3D
 {
@@ -41,8 +41,8 @@ struct URHO3D_API FPIDController
 
 public:
     // Default constructor (no initialization)
-    FPIDController() :
-        UpdateFunctionPtr{nullptr}
+    FPIDController()
+        : UpdateFunctionPtr{nullptr}
     {
     }
 
@@ -106,8 +106,8 @@ struct URHO3D_API FPIDController3D
 
 public:
     // Default constructor (no initialization)
-    FPIDController3D() :
-        UpdateFunctionPtr{nullptr}
+    FPIDController3D()
+        : UpdateFunctionPtr{nullptr}
     {
     }
 

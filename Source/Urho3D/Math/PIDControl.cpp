@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2020-2021 Theophilus Eriata.
+// Copyright (c) 2020-2022 Theophilus Eriata.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,8 +27,11 @@
 namespace Urho3D
 {
 // Init ctor
-FPIDController::FPIDController(float InP, float InI, float InD, float InMaxOutAbs) :
-    P(InP), I(InI), D(InD), MaxOutAbs(InMaxOutAbs)
+FPIDController::FPIDController(float InP, float InI, float InD, float InMaxOutAbs)
+    : P(InP)
+    , I(InI)
+    , D(InD)
+    , MaxOutAbs(InMaxOutAbs)
 {
     // Reset errors, bind update function ptr
     FPIDController::Init();
@@ -37,9 +40,9 @@ FPIDController::FPIDController(float InP, float InI, float InD, float InMaxOutAb
 // Init
 void FPIDController::Init(float InP, float InI, float InD, float InMaxOutAbs, bool bClearErrors /*= true*/)
 {
-    P         = InP;
-    I         = InI;
-    D         = InD;
+    P = InP;
+    I = InI;
+    D = InD;
     MaxOutAbs = InMaxOutAbs;
     // Reset errors, bind update function ptr
     FPIDController::Init(bClearErrors);
@@ -51,7 +54,7 @@ void FPIDController::Init(bool bClearErrors /*= true*/)
     if (bClearErrors)
     {
         PrevErr = 0.f;
-        IErr    = 0.f;
+        IErr = 0.f;
     }
 
     // Bind the update type function ptr
@@ -172,8 +175,11 @@ float FPIDController::UpdateAsPI(const float InError, const float InDeltaTime)
 }
 
 // Init ctor
-FPIDController3D::FPIDController3D(float InP, float InI, float InD, float InMaxOutAbs) :
-    P(InP), I(InI), D(InD), MaxOutAbs(InMaxOutAbs)
+FPIDController3D::FPIDController3D(float InP, float InI, float InD, float InMaxOutAbs)
+    : P(InP)
+    , I(InI)
+    , D(InD)
+    , MaxOutAbs(InMaxOutAbs)
 {
     // Reset errors, bind update function ptr
     FPIDController3D::Init();
@@ -182,9 +188,9 @@ FPIDController3D::FPIDController3D(float InP, float InI, float InD, float InMaxO
 // Init
 void FPIDController3D::Init(float InP, float InI, float InD, float InMaxOutAbs, bool bClearErrors /*= true*/)
 {
-    P         = InP;
-    I         = InI;
-    D         = InD;
+    P = InP;
+    I = InI;
+    D = InD;
     MaxOutAbs = InMaxOutAbs;
     // Reset errors, bind update function ptr
     FPIDController3D::Init(bClearErrors);
@@ -196,7 +202,7 @@ void FPIDController3D::Init(bool bClearErrors /*= true*/)
     if (bClearErrors)
     {
         PrevErr = Vector3(Vector3::ZERO);
-        IErr    = Vector3(Vector3::ZERO);
+        IErr = Vector3(Vector3::ZERO);
     }
 
     // Bind the update type function ptr

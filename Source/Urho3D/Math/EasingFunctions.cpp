@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2020-2021 Theophilus Eriata.
+// Copyright (c) 2020-2022 Theophilus Eriata.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -28,11 +28,11 @@
 
 namespace Urho3D
 {
-double easeInSine(double t) { return sin(1.5707963 * t); }
+double easeInSine(double t) { return Sin(1.5707963 * t); }
 
-double easeOutSine(double t) { return 1 + sin(1.5707963 * (--t)); }
+double easeOutSine(double t) { return 1 + Sin(1.5707963 * (--t)); }
 
-double easeInOutSine(double t) { return 0.5 * (1 + sin(3.1415926 * (t - 0.5))); }
+double easeInOutSine(double t) { return 0.5 * (1 + Sin(3.1415926 * (t - 0.5))); }
 
 double easeInQuad(double t) { return t * t; }
 
@@ -99,35 +99,35 @@ double easeInOutQuint(double t)
     }
 }
 
-double easeInExpo(double t) { return (pow(2.0, 8.0 * t) - 1.0) / 255.0; }
+double easeInExpo(double t) { return (Pow(2.0, 8.0 * t) - 1.0) / 255.0; }
 
-double easeOutExpo(double t) { return 1 - pow(2.0, -8.0 * t); }
+double easeOutExpo(double t) { return 1 - Pow(2.0, -8.0 * t); }
 
 double easeInOutExpo(double t)
 {
     if (t < 0.5)
     {
-        return (pow(2.0, 16.0 * t) - 1) / 510.0;
+        return (Pow(2.0, 16.0 * t) - 1) / 510.0;
     }
     else
     {
-        return 1.0 - 0.5 * pow(2.0, -16.0 * (t - 0.5));
+        return 1.0 - 0.5 * Pow(2.0, -16.0 * (t - 0.5));
     }
 }
 
-double easeInCirc(double t) { return 1.0 - sqrt(1.0 - t); }
+double easeInCirc(double t) { return 1.0 - Sqrt(1.0 - t); }
 
-double easeOutCirc(double t) { return sqrt(t); }
+double easeOutCirc(double t) { return Sqrt(t); }
 
 double easeInOutCirc(double t)
 {
     if (t < 0.5)
     {
-        return (1 - sqrt(1.0 - 2.0 * t)) * 0.5;
+        return (1 - Sqrt(1.0 - 2.0 * t)) * 0.5;
     }
     else
     {
-        return (1 + sqrt(2.0 * t - 1.0)) * 0.5;
+        return (1 + Sqrt(2.0 * t - 1.0)) * 0.5;
     }
 }
 
@@ -150,13 +150,13 @@ double easeInOutBack(double t)
 double easeInElastic(double t)
 {
     double t2 = t * t;
-    return t2 * t2 * sin(t * M_PI * 4.5);
+    return t2 * t2 * Sin(t * M_PI * 4.5);
 }
 
 double easeOutElastic(double t)
 {
     double t2 = (t - 1) * (t - 1.0);
-    return 1.0 - t2 * t2 * cos(t * M_PI * 4.5);
+    return 1.0 - t2 * t2 * Cos(t * M_PI * 4.5);
 }
 
 double easeInOutElastic(double t)
@@ -165,32 +165,32 @@ double easeInOutElastic(double t)
     if (t < 0.45)
     {
         t2 = t * t;
-        return 8.0 * t2 * t2 * sin(t * M_PI * 9.0);
+        return 8.0 * t2 * t2 * Sin(t * M_PI * 9.0);
     }
     else if (t < 0.55)
     {
-        return 0.5 + 0.75 * sin(t * M_PI * 4.0);
+        return 0.5 + 0.75 * Sin(t * M_PI * 4.0);
     }
     else
     {
         t2 = (t - 1) * (t - 1);
-        return 1.0 - 8.0 * t2 * t2 * sin(t * M_PI * 9.0);
+        return 1.0 - 8.0 * t2 * t2 * Sin(t * M_PI * 9.0);
     }
 }
 
-double easeInBounce(double t) { return pow(2.0, 6.0 * (t - 1)) * abs(sin(t * M_PI * 3.5)); }
+double easeInBounce(double t) { return pow(2.0, 6.0 * (t - 1)) * Abs(Sin(t * M_PI * 3.5)); }
 
-double easeOutBounce(double t) { return 1.0 - pow(2.0, -6.0 * t) * abs(cos(t * M_PI * 3.5)); }
+double easeOutBounce(double t) { return 1.0 - pow(2.0, -6.0 * t) * Abs(Cos(t * M_PI * 3.5)); }
 
 double easeInOutBounce(double t)
 {
     if (t < 0.5)
     {
-        return 8.0 * pow(2.0, 8.0 * (t - 1.0)) * abs(sin(t * M_PI * 7.0));
+        return 8.0 * Pow(2.0, 8.0 * (t - 1.0)) * Abs(Sin(t * M_PI * 7.0));
     }
     else
     {
-        return 1.0 - 8.0 * pow(2.0, -8.0 * t) * abs(sin(t * M_PI * 7.0));
+        return 1.0 - 8.0 * Pow(2.0, -8.0 * t) * Abs(Sin(t * M_PI * 7.0));
     }
 }
 
