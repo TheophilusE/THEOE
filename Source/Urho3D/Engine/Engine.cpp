@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -53,6 +54,9 @@
 #endif
 #ifdef URHO3D_NETWORK
 #include "../Network/Network.h"
+#endif
+#ifdef URHO3D_DATABASE
+#include "../Database/Database.h"
 #endif
 #ifdef URHO3D_PHYSICS
 #include "../Physics/PhysicsWorld.h"
@@ -142,6 +146,9 @@ Engine::Engine(Context* context) :
     context_->RegisterSubsystem(new Localization(context_));
 #ifdef URHO3D_NETWORK
     context_->RegisterSubsystem(new Network(context_));
+#endif
+#ifdef URHO3D_DATABASE
+    context_->RegisterSubsystem(new Database(context_));
 #endif
     // Required in headless mode as well.
     RegisterGraphicsLibrary(context_);

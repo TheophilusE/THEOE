@@ -1,5 +1,6 @@
 //
-// Copyright (c) 2017-2020 the rbfx project.
+// Copyright (c) 2020-2022 Theophilus Eriata.
+// Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -97,6 +98,9 @@
 #include "39_CrowdNavigation/CrowdNavigation.h"
 #endif
 #include "40_Localization/L10n.h"
+#if URHO3D_DATABASE
+#include "41_DatabaseDemo/DatabaseDemo.h"
+#endif
 #if URHO3D_NETWORK
 #include "43_HttpRequestDemo/HttpRequestDemo.h"
 #endif
@@ -293,6 +297,9 @@ void SamplesManager::Start()
     RegisterSample<CrowdNavigation>();
 #endif
     RegisterSample<L10n>();
+#if URHO3D_DATABASE
+    RegisterSample<DatabaseDemo>();
+#endif
 #if URHO3D_NETWORK
     RegisterSample<HttpRequestDemo>();
 #endif

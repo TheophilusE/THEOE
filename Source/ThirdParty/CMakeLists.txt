@@ -107,6 +107,14 @@ if (NOT MINI_URHO)
         add_subdirectory (Civetweb)
         add_subdirectory (SLikeNet)
     endif ()
+	
+	if (URHO3D_DATABASE_ODBC)
+		add_subdirectory (nanodbc)
+	endif ()
+
+	if (URHO3D_DATABASE_SQLITE)
+		add_subdirectory (SQLite)
+	endif ()
 
     if (URHO3D_IK)
         add_subdirectory (ik)

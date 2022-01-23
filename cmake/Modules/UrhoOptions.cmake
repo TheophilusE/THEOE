@@ -146,6 +146,10 @@ option(URHO3D_NO_EDITOR_PLAYER_EXE              "Do not build editor or player e
 option(URHO3D_CONTAINER_ADAPTERS                "Enable EASTL-to-Urho container adapters for easier porting of legacy code." OFF)
 option(URHO3D_SSL                               "Enable OpenSSL support"                                OFF)
 
+option                 (URHO3D_DATABASE         "Enable Database support"                               ${URHO3D_ENABLE_ALL})
+cmake_dependent_option (URHO3D_DATABASE_ODBC    "Enable Database support with ODBC, requires vendor-specific ODBC driver" FALSE "NOT IOS AND NOT TVOS AND NOT ANDROID AND NOT WEB;NOT MSVC OR NOT MSVC_VERSION VERSION_LESS 1900" FALSE)
+option                 (URHO3D_DATABASE_SQLITE  "Enable Database support with SQLite embedded"          ${URHO3D_ENABLE_ALL})
+
 if (WIN32)
     set(URHO3D_GRAPHICS_API D3D11 CACHE STRING "Graphics API")
     set_property(CACHE URHO3D_GRAPHICS_API PROPERTY STRINGS D3D9 D3D11 OpenGL)

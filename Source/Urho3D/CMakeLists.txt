@@ -105,6 +105,15 @@ if (URHO3D_CSHARP)
     define_engine_source_files (Script)
 endif ()
 
+if (URHO3D_DATABASE)
+    define_engine_source_files (NORECURSE . Database)
+    if (URHO3D_DATABASE_ODBC)
+        define_engine_source_files (Database/ODBC)
+    elseif (URHO3D_DATABASE_SQLITE)
+        define_engine_source_files (Database/SQLite)
+    endif()
+endif()
+
 # Group source code in VS solution
 group_sources()
 
@@ -261,6 +270,15 @@ foreach (dep ${THIRD_PARTY_DEPENDENCIES})
         endif ()
     endif ()
 endforeach()
+
+if (URHO3D_DATABASE)
+    if (URHO3D_DATABASE_ODBC)
+        target_link_libraries (Urho3D PUBLIC nanodbc)
+    endif()
+    if (URHO3D_DATABASE_SQLITE)
+        target_link_libraries (Urho3D PUBLIC sqlite)
+    endif()
+endif()
 
 if (URHO3D_SSE)
     if (MSVC)
