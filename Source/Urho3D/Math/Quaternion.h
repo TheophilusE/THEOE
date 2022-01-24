@@ -416,14 +416,14 @@ public:
         return Urho3D::Equals(w_, rhs.w_, eps) && Urho3D::Equals(x_, rhs.x_, eps) && Urho3D::Equals(y_, rhs.y_, eps) && Urho3D::Equals(z_, rhs.z_, eps);
     }
 
-    // Is the dot product of two quaternions within tolerance for them to be considered equal?
+    /// Is the dot product of two quaternions within tolerance for them to be considered equal?
     bool IsEqualUsingDot(float dot)
     {
         // Returns false in the presence of NaN values.
         return dot > 1.0f - M_EPSILON;
     }
 
-     /// Returns the angle in degrees between two rotations /a/ and /b/.
+    /// Returns the angle in degrees between two rotations /a/ and /b/.
     float Angle(Quaternion b)
     {
         float dot = DotProduct(b);
