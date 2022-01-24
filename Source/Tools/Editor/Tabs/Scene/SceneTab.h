@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2017-2020 the rbfx project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -22,16 +23,14 @@
 
 #pragma once
 
-
+#include "Tabs/BaseResourceTab.h"
+#include "Tabs/Scene/SceneClipboard.h"
+#include <Toolbox/Graphics/SceneView.h>
+#include <Toolbox/SystemUI/AttributeInspector.h>
+#include <Toolbox/SystemUI/Gizmo.h>
 #include <Urho3D/IO/ArchiveSerialization.h>
 #include <Urho3D/IO/BinaryArchive.h>
 #include <Urho3D/Scene/SceneManager.h>
-#include <Toolbox/SystemUI/AttributeInspector.h>
-#include <Toolbox/SystemUI/Gizmo.h>
-#include <Toolbox/Graphics/SceneView.h>
-#include "Tabs/BaseResourceTab.h"
-#include "Tabs/Scene/SceneClipboard.h"
-
 
 namespace Urho3D
 {
@@ -61,9 +60,12 @@ struct SceneState
     VectorBuffer sceneState_;
 };
 
-class SceneTab : public BaseResourceTab, public IHierarchyProvider
+class SceneTab
+    : public BaseResourceTab
+    , public IHierarchyProvider
 {
     URHO3D_OBJECT(SceneTab, BaseResourceTab);
+
 public:
     /// Selection mode.
     enum class SelectionMode
@@ -95,45 +97,66 @@ public:
     /// Modify current scene selection.
     void ModifySelection(const ea::vector<Node*>& nodes, const ea::vector<Component*>& components, SelectionMode mode);
     /// Modify current scene selection.
-    void ModifySelection(const ea::vector<Component*>& components, SelectionMode mode)              { ModifySelection({}, components, mode); }
+    void ModifySelection(const ea::vector<Component*>& components, SelectionMode mode)
+    {
+        ModifySelection({}, components, mode);
+    }
     /// Modify current scene selection.
-    void ModifySelection(const ea::vector<Node*>& nodes, SelectionMode mode)                        { ModifySelection(nodes, {}, mode); }
+    void ModifySelection(const ea::vector<Node*>& nodes, SelectionMode mode) { ModifySelection(nodes, {}, mode); }
     /// Select nodes and components.
-    void Select(const ea::vector<Node*>& nodes, const ea::vector<Component*>& components)           { ModifySelection(nodes, components, SelectionMode::Add); }
+    void Select(const ea::vector<Node*>& nodes, const ea::vector<Component*>& components)
+    {
+        ModifySelection(nodes, components, SelectionMode::Add);
+    }
     /// Select components.
-    void Select(const ea::vector<Component*>& components)                                           { ModifySelection({}, components, SelectionMode::Add); }
+    void Select(const ea::vector<Component*>& components) { ModifySelection({}, components, SelectionMode::Add); }
     /// Select nodes.
-    void Select(const ea::vector<Node*>& nodes)                                                     { ModifySelection(nodes, {}, SelectionMode::Add); }
+    void Select(const ea::vector<Node*>& nodes) { ModifySelection(nodes, {}, SelectionMode::Add); }
     /// Select node and component.
-    void Select(Node* node, Component* component)                                                   { ModifySelection({node}, {component}, SelectionMode::Add); }
+    void Select(Node* node, Component* component) { ModifySelection({node}, {component}, SelectionMode::Add); }
     /// Select component.
-    void Select(Component* component)                                                               { ModifySelection({}, {component}, SelectionMode::Add); }
+    void Select(Component* component) { ModifySelection({}, {component}, SelectionMode::Add); }
     /// Select node.
-    void Select(Node* node)                                                                         { ModifySelection({node}, {}, SelectionMode::Add); }
+    void Select(Node* node) { ModifySelection({node}, {}, SelectionMode::Add); }
     /// Unselect nodes and components.
-    void Unselect(const ea::vector<Node*>& nodes, const ea::vector<Component*>& components)         { ModifySelection(nodes, components, SelectionMode::Subtract); }
+    void Unselect(const ea::vector<Node*>& nodes, const ea::vector<Component*>& components)
+    {
+        ModifySelection(nodes, components, SelectionMode::Subtract);
+    }
     /// Unselect components.
-    void Unselect(const ea::vector<Component*>& components)                                         { ModifySelection({}, components, SelectionMode::Subtract); }
+    void Unselect(const ea::vector<Component*>& components)
+    {
+        ModifySelection({}, components, SelectionMode::Subtract);
+    }
     /// Unselect nodes.
-    void Unselect(const ea::vector<Node*>& nodes)                                                   { ModifySelection(nodes, {}, SelectionMode::Subtract); }
+    void Unselect(const ea::vector<Node*>& nodes) { ModifySelection(nodes, {}, SelectionMode::Subtract); }
     /// Unselect node and component.
-    void Unselect(Node* node, Component* component)                                                 { ModifySelection({node}, {component}, SelectionMode::Subtract); }
+    void Unselect(Node* node, Component* component) { ModifySelection({node}, {component}, SelectionMode::Subtract); }
     /// Unselect component.
-    void Unselect(Component* component)                                                             { ModifySelection({}, {component}, SelectionMode::Subtract); }
+    void Unselect(Component* component) { ModifySelection({}, {component}, SelectionMode::Subtract); }
     /// Unselect node.
-    void Unselect(Node* node)                                                                       { ModifySelection({node}, {}, SelectionMode::Subtract); }
+    void Unselect(Node* node) { ModifySelection({node}, {}, SelectionMode::Subtract); }
     /// Toggle selection of nodes and components.
-    void ToggleSelection(const ea::vector<Node*>& nodes, const ea::vector<Component*>& components)  { ModifySelection(nodes, components, SelectionMode::Toggle); }
+    void ToggleSelection(const ea::vector<Node*>& nodes, const ea::vector<Component*>& components)
+    {
+        ModifySelection(nodes, components, SelectionMode::Toggle);
+    }
     /// Toggle selection of components.
-    void ToggleSelection(const ea::vector<Component*>& components)                                  { ModifySelection({}, components, SelectionMode::Toggle); }
+    void ToggleSelection(const ea::vector<Component*>& components)
+    {
+        ModifySelection({}, components, SelectionMode::Toggle);
+    }
     /// Toggle selection of nodes.
-    void ToggleSelection(const ea::vector<Node*>& nodes)                                            { ModifySelection(nodes, {}, SelectionMode::Toggle); }
+    void ToggleSelection(const ea::vector<Node*>& nodes) { ModifySelection(nodes, {}, SelectionMode::Toggle); }
     /// Toggle selection of node and component.
-    void ToggleSelection(Node* node, Component* component)                                          { ModifySelection({node}, {component}, SelectionMode::Toggle); }
+    void ToggleSelection(Node* node, Component* component)
+    {
+        ModifySelection({node}, {component}, SelectionMode::Toggle);
+    }
     /// Toggle selection of component.
-    void ToggleSelection(Component* component)                                                      { ModifySelection({}, {component}, SelectionMode::Toggle); }
+    void ToggleSelection(Component* component) { ModifySelection({}, {component}, SelectionMode::Toggle); }
     /// Toggle selection of node.
-    void ToggleSelection(Node* node)                                                                { ModifySelection({node}, {}, SelectionMode::Toggle); }
+    void ToggleSelection(Node* node) { ModifySelection({node}, {}, SelectionMode::Toggle); }
     /// Clear any user selection tracked by this tab.
     void ClearSelection() override;
     /// Serialize current user selection into a buffer and return it.
@@ -198,6 +221,8 @@ protected:
     void RenderDebugInfo();
     /// Editor camera rotation guide at the top-right corner.
     void RenderViewManipulator(ImRect rect);
+    /// Refocus Editor camera to the selected node.
+    void RefocusToNode(Camera* camera, StringHash cameraControllerType, float timeStep, bool updatePressed);
 
     /// Rectangle dimensions that are rendered by this view.
     IntRect rect_;
@@ -231,7 +256,8 @@ protected:
     SceneClipboard clipboard_;
     /// List of node IDs that are saved when scene state is saved. Node selection will be restored using these.
     ea::vector<unsigned> savedNodeSelection_;
-    /// List of component IDs that are saved when scene state is saved. Component selection will be restored using these.
+    /// List of component IDs that are saved when scene state is saved. Component selection will be restored using
+    /// these.
     ea::vector<unsigned> savedComponentSelection_;
     ///
     bool debugHudVisible_ = false;
@@ -247,6 +273,12 @@ protected:
     unsigned reorderingId_ = M_MAX_UNSIGNED;
     ///
     unsigned reorderingInitialPos_ = M_MAX_UNSIGNED;
+    /// Check if the viewport needs to refocus to a component.
+    bool isRefocusEnabled = false;
+    /// Target refocus rotation.
+    Quaternion targetRotation = Quaternion::ZERO;
+    /// Target refocus position.
+    Vector3 targetPosition = Vector3::ZERO;
 };
 
-};
+}; // namespace Urho3D
