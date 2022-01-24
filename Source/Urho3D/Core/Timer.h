@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -29,21 +30,39 @@ namespace Urho3D
 
 static const char* DEFAULT_DATE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S";
 
-/// Low-resolution operating system timer.
+/// Low-resolution operating system timer. No timeout.
 class URHO3D_API Timer
 {
 public:
     /// Construct. Get the starting clock value.
     Timer();
+    /// Construct. Specify duration in milliseconds until the timer times-out.
+    Timer(unsigned timeoutDurationMs);
 
     /// Return elapsed milliseconds and optionally reset.
     unsigned GetMSec(bool reset);
+
+    /// Return the clock value in milliseconds when the timer was started.
+    unsigned GetStartTime();
+
+    /// Sets a new timeout duration in milliseconds.  duration is from the starting time of the timer. optionally reset.
+    void SetTimeoutDuration(unsigned timeoutDurationMs, bool reset = false);
+
+    /// Return the duration in milliseconds for the timeout.
+    unsigned GetTimeoutDuration();
+
+    /// Return whether the timer has timed-out (is in over-time)
+    bool IsTimedOut();
+
     /// Reset the timer.
     void Reset();
 
 private:
     /// Starting clock value in milliseconds.
     unsigned startTime_{};
+
+    /// clock value in milliseconds when the timer will time-out.
+    unsigned timeoutDuration_;
 };
 
 /// High-resolution operating system timer used in profiling.
@@ -54,9 +73,24 @@ class URHO3D_API HiresTimer
 public:
     /// Construct. Get the starting high-resolution clock value.
     HiresTimer();
+    /// Construct. Specify duration in microseconds until the timer times-out.
+    HiresTimer(long long timeoutDurationUs);
 
-    /// Return elapsed microseconds and optionally reset.
+    /// Return elapsed microseconds
     long long GetUSec(bool reset);
+
+    /// Return the microsecond clock value when the timer was started.
+    long long GetStartTime();
+
+    /// Sets a new timeout duration in microseconds.  duration is from the starting time of the timer. optionally reset.
+    void SetTimeoutDuration(long long timeoutDurationUs, bool reset = false);
+
+    /// Returns the duration for the timeout. 0 if no timeout duration was specified.
+    long long GetTimeoutDuration();
+
+    /// Return whether the timer has timed-out.
+    bool IsTimedOut();
+
     /// Reset the timer.
     void Reset();
 
@@ -66,12 +100,22 @@ public:
     /// Return high-resolution timer frequency if supported.
     static long long GetFrequency() { return frequency; }
 
+    /// Converts CPU ticks to microseconds.
+    static long long TicksToUSec(long long ticks);
+
+    /// Converts microseconds to CPU ticks.
+    static long long USecToTicks(long long microseconds);
+
 private:
     /// Starting clock value in CPU ticks.
-    long long startTime_{};
+    long long startTick_;
+
+    /// Clock ticks until the timer times-out.
+    long long timeoutDurationTicks_;
 
     /// High-resolution timer support flag.
     static bool supported;
+
     /// High-resolution timer frequency.
     static long long frequency;
 };
@@ -118,9 +162,9 @@ public:
     /// Get system time as seconds since 1.1.1970.
     static unsigned GetTimeSinceEpoch();
     /// Get a date/time stamp as a string.
-    static ea::string GetTimeStamp(const char* format=nullptr);
+    static ea::string GetTimeStamp(const char* format = nullptr);
     /// Get a date/time stamp as a string.
-    static ea::string GetTimeStamp(time_t timestamp, const char* format=nullptr);
+    static ea::string GetTimeStamp(time_t timestamp, const char* format = nullptr);
     /// Sleep for a number of milliseconds.
     static void Sleep(unsigned mSec);
 
@@ -135,4 +179,4 @@ private:
     unsigned timerPeriod_;
 };
 
-}
+} // namespace Urho3D

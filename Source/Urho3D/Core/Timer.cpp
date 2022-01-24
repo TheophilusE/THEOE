@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -29,13 +30,13 @@
 #include <ctime>
 
 #ifdef _WIN32
-#include <windows.h>
-#include <mmsystem.h>
+    #include <mmsystem.h>
+    #include <windows.h>
 #elif __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
+    #include <emscripten/emscripten.h>
 #else
-#include <sys/time.h>
-#include <unistd.h>
+    #include <sys/time.h>
+    #include <unistd.h>
 #endif
 
 #include "../DebugNew.h"
@@ -50,11 +51,11 @@ URHO3D_EVENT(E_ENDFRAMEPRIVATE, EndFramePrivate)
 bool HiresTimer::supported(false);
 long long HiresTimer::frequency(1000);
 
-Time::Time(Context* context) :
-    Object(context),
-    frameNumber_(0),
-    timeStep_(0.0f),
-    timerPeriod_(0)
+Time::Time(Context* context)
+    : Object(context)
+    , frameNumber_(0)
+    , timeStep_(0.0f)
+    , timerPeriod_(0)
 {
 #ifdef _WIN32
     LARGE_INTEGER frequency;
@@ -81,7 +82,9 @@ static unsigned Tick()
 #elif __EMSCRIPTEN__
     return (unsigned)emscripten_get_now();
 #else
-    struct timeval time{};
+    struct timeval time
+    {
+    };
     gettimeofday(&time, nullptr);
     return (unsigned)(time.tv_sec * 1000 + time.tv_usec / 1000);
 #endif
@@ -90,22 +93,24 @@ static unsigned Tick()
 static long long HiresTick()
 {
 #ifdef _WIN32
-#ifndef UWP
+    #ifndef UWP
     if (HiresTimer::IsSupported())
     {
-#endif
+    #endif
         LARGE_INTEGER counter;
         QueryPerformanceCounter(&counter);
         return counter.QuadPart;
-#ifndef UWP
+    #ifndef UWP
     }
     else
         return GetTickCount();
-#endif
+    #endif
 #elif __EMSCRIPTEN__
-    return (long long)(emscripten_get_now()*1000.0);
+    return (long long)(emscripten_get_now() * 1000.0);
 #else
-    struct timeval time{};
+    struct timeval time
+    {
+    };
     gettimeofday(&time, nullptr);
     return time.tv_sec * 1000000LL + time.tv_usec;
 #endif
@@ -177,6 +182,7 @@ ea::string Time::GetTimeStamp(const char* format)
 {
     time_t timestamp = 0;
     time(&timestamp);
+
     return GetTimeStamp(timestamp, format);
 }
 
@@ -188,6 +194,7 @@ ea::string Time::GetTimeStamp(time_t timestamp, const char* format)
     char dateTime[128];
     tm* timeInfo = localtime(&timestamp);
     strftime(dateTime, sizeof(dateTime), format, timeInfo);
+
     return dateTime;
 }
 
@@ -211,14 +218,48 @@ Timer::Timer()
     Reset();
 }
 
+Timer::Timer(unsigned timeoutDurationMs)
+{
+    Reset();
+    SetTimeoutDuration(timeoutDurationMs);
+}
+
 unsigned Timer::GetMSec(bool reset)
 {
     unsigned currentTime = Tick();
     unsigned elapsedTime = currentTime - startTime_;
+
     if (reset)
-        startTime_ = currentTime;
+        Reset();
 
     return elapsedTime;
+}
+
+unsigned Timer::GetStartTime()
+{
+    return startTime_;
+}
+
+void Timer::SetTimeoutDuration(unsigned timeoutDurationMs, bool reset)
+{
+    timeoutDuration_ = timeoutDurationMs;
+
+    if (reset)
+        Reset();
+}
+
+unsigned Timer::GetTimeoutDuration()
+{
+    return timeoutDuration_;
+}
+
+bool Timer::IsTimedOut()
+{
+    unsigned currentTime = Tick();
+    if (currentTime - startTime_ >= timeoutDuration_ && (timeoutDuration_ != 0))
+        return true;
+
+    return false;
 }
 
 void Timer::Reset()
@@ -231,24 +272,67 @@ HiresTimer::HiresTimer()
     Reset();
 }
 
+HiresTimer::HiresTimer(long long timeoutDurationUs)
+{
+    Reset();
+    SetTimeoutDuration(timeoutDurationUs);
+}
+
 long long HiresTimer::GetUSec(bool reset)
 {
     long long currentTime = HiresTick();
-    long long elapsedTime = currentTime - startTime_;
+    long long elapsedTicks = currentTime - startTick_;
 
     // Correct for possible weirdness with changing internal frequency
-    if (elapsedTime < 0)
-        elapsedTime = 0;
+    if (elapsedTicks < 0)
+        elapsedTicks = 0;
 
     if (reset)
-        startTime_ = currentTime;
+        Reset();
 
-    return (elapsedTime * 1000000LL) / frequency;
+    return TicksToUSec(elapsedTicks);
+}
+
+long long HiresTimer::GetStartTime()
+{
+    return startTick_;
+}
+
+void HiresTimer::SetTimeoutDuration(long long timeoutDurationUs, bool reset)
+{
+    timeoutDurationTicks_ = USecToTicks(timeoutDurationUs);
+    if (reset)
+        Reset();
+}
+
+long long HiresTimer::GetTimeoutDuration()
+{
+    return TicksToUSec(timeoutDurationTicks_);
+}
+
+bool HiresTimer::IsTimedOut()
+{
+    long long currentTick = HiresTick();
+
+    if (currentTick - startTick_ >= timeoutDurationTicks_ && (timeoutDurationTicks_ != 0))
+        return true;
+
+    return false;
 }
 
 void HiresTimer::Reset()
 {
-    startTime_ = HiresTick();
+    startTick_ = HiresTick();
 }
 
+long long HiresTimer::TicksToUSec(long long ticks)
+{
+    return (ticks * 1000000LL) / frequency;
 }
+
+long long HiresTimer::USecToTicks(long long microseconds)
+{
+    return (microseconds * frequency) / 1000000LL + 1;
+}
+
+} // namespace Urho3D
