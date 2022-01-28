@@ -22,20 +22,20 @@
 #include <Urho3D/Core/CoreEvents.h>
 #include <Urho3D/Core/StringUtils.h>
 #include <Urho3D/Graphics/Graphics.h>
-#include <Urho3D/IO/FileSystem.h>
-#include <Urho3D/IO/Log.h>
 #include <Urho3D/IO/Archive.h>
 #include <Urho3D/IO/ArchiveSerialization.h>
+#include <Urho3D/IO/FileSystem.h>
+#include <Urho3D/IO/Log.h>
 #include <Urho3D/Resource/JSONArchive.h>
 #include <Urho3D/Resource/ResourceCache.h>
 #include <Urho3D/Resource/ResourceEvents.h>
 #include <Urho3D/SystemUI/SystemUI.h>
 #if URHO3D_RMLUI
-#   include <Urho3D/RmlUI/RmlUI.h>
+    #include <Urho3D/RmlUI/RmlUI.h>
 #endif
 
-#include <regex>
 #include <EASTL/sort.h>
+#include <regex>
 
 #include <IconFontCppHeaders/IconsFontAwesome5.h>
 #include <Toolbox/SystemUI/Widgets.h>
@@ -45,13 +45,12 @@
 #include "Pipeline/Pipeline.h"
 #include "Project.h"
 #if URHO3D_PLUGINS
-#   include "Plugins/ModulePlugin.h"
-#   include "Plugins/PluginManager.h"
-#   include "Plugins/ScriptBundlePlugin.h"
+    #include "Plugins/ModulePlugin.h"
+    #include "Plugins/PluginManager.h"
+    #include "Plugins/ScriptBundlePlugin.h"
 #endif
-#include "Tabs/Scene/SceneTab.h"
 #include "Tabs/ResourceTab.h"
-
+#include "Tabs/Scene/SceneTab.h"
 
 namespace Urho3D
 {
@@ -118,7 +117,6 @@ bool Project::LoadProject(const ea::string& projectPath, bool disableAssetImport
     auto* cache = GetSubsystem<ResourceCache>();
     projectFileDir_ = AddTrailingSlash(projectPath);
 
-
     // Cache directory setup. Needs to happen before deserialization of Project.json because flavors depend on cache
     // path availability.
     cachePath_ = projectFileDir_ + "Cache/";
@@ -133,7 +131,24 @@ bool Project::LoadProject(const ea::string& projectPath, bool disableAssetImport
         if (!file.LoadFile(filePath))
             return false;
     }
-    // Loading is performed even on empty file. Give a chance for serialization function to do default setup in case of missing data.
+
+#if URHO3D_PLUGINS
+    // Clean up old copies of reloadable files.
+    if (!context_->GetSubsystem<Engine>()->IsHeadless())
+    {
+        // Normal execution cleans up old versions of plugins.
+        StringVector files;
+        fs->ScanDir(files, fs->GetProgramDir(), "", SCAN_FILES, false);
+        for (const ea::string& fileName : files)
+        {
+            if (std::regex_match(fileName.c_str(), std::regex("^.*[0-9]+\\.(dll|dylib|so)$")))
+                fs->Delete(fs->GetProgramDir() + fileName);
+        }
+    }
+#endif
+
+    // Loading is performed even on empty file. Give a chance for serialization function to do default setup in case of
+    // missing data.
     JSONInputArchive archive(&file);
     SerializeValue(archive, "project", *this);
 
@@ -168,7 +183,7 @@ bool Project::LoadProject(const ea::string& projectPath, bool disableAssetImport
             {
                 // Seed global string hash to name map.
                 StringHash hash(value.GetString());
-                (void) (hash);
+                (void)(hash);
             }
         }
     }
@@ -210,23 +225,10 @@ bool Project::LoadProject(const ea::string& projectPath, bool disableAssetImport
         ui->LoadFont(Format("Fonts/{}", font));
 #endif
 
-#if URHO3D_PLUGINS
-    // Clean up old copies of reloadable files.
-    if (!context_->GetSubsystem<Engine>()->IsHeadless())
-    {
-        // Normal execution cleans up old versions of plugins.
-        StringVector files;
-        fs->ScanDir(files, fs->GetProgramDir(), "", SCAN_FILES, false);
-        for (const ea::string& fileName : files)
-        {
-            if (std::regex_match(fileName.c_str(), std::regex("^.*[0-9]+\\.(dll|dylib|so)$")))
-                fs->Delete(fs->GetProgramDir() + fileName);
-        }
-    }
-#if URHO3D_CSHARP
+#if URHO3D_PLUGINS && URHO3D_CSHARP
     plugins_->Load(ScriptBundlePlugin::GetTypeStatic(), "Scripts");
 #endif
-#endif
+
     if (!disableAssetImport)
     {
         pipeline_->EnableWatcher();
@@ -301,7 +303,8 @@ void Project::SerializeInBlock(Archive& archive)
         return;
     }
 
-    // Saving project data of tabs may trigger saving resources, which in turn triggers saving editor project. Avoid that loop.
+    // Saving project data of tabs may trigger saving resources, which in turn triggers saving editor project. Avoid
+    // that loop.
     UnsubscribeFromEvent(E_EDITORRESOURCESAVED);
 
     int archiveVersion = version;
@@ -338,7 +341,8 @@ void Project::RenderSettingsUI()
 
             explicit ProjectSettingsState(Project* project)
             {
-                project->context_->GetSubsystem<FileSystem>()->ScanDir(scenes_, project->GetResourcePath(), "*.xml", SCAN_FILES, true);
+                project->context_->GetSubsystem<FileSystem>()->ScanDir(
+                    scenes_, project->GetResourcePath(), "*.xml", SCAN_FILES, true);
                 for (auto it = scenes_.begin(); it != scenes_.end();)
                 {
                     if (GetContentType(project->context_, *it) == CTYPE_SCENE)
@@ -365,38 +369,38 @@ void Project::RenderSettingsUI()
             ui::SetHelpTooltip("Create a new scene first.", KEY_UNKNOWN);
         ui::SetHelpTooltip("Select a default scene that will be started on application startup.");
 
-        ui::PopID();    // Default Scene
+        ui::PopID(); // Default Scene
 
         // Plugins
 #if URHO3D_PLUGINS
         ui::PushID("Plugins");
         ui::Separator();
         ui::Text("Active plugins:");
-#if URHO3D_STATIC
+    #if URHO3D_STATIC
         static const char* pluginStates[] = {"Loaded"};
-#else
+    #else
         static const char* pluginStates[] = {"Inactive", "Editor", "Editor and Application"};
-#endif
+    #endif
         const StringVector& pluginNames = GetPlugins()->GetPluginNames();
         bool hasPlugins = false;
         PluginManager* plugins = GetPlugins();
-#if URHO3D_STATIC
+    #if URHO3D_STATIC
         for (Plugin* plugin : plugins->GetPlugins())
         {
             const ea::string& baseName = plugin->GetName();
             int currentState = 0;
-#else
+    #else
         for (const ea::string& baseName : pluginNames)
         {
             Plugin* plugin = plugins->GetPlugin(baseName);
             bool loaded = plugin != nullptr && plugin->IsLoaded();
             bool editorOnly = plugin && plugin->IsPrivate();
             int currentState = loaded ? (editorOnly ? 1 : 2) : 0;
-#endif
+    #endif
             hasPlugins = true;
             if (ui::Combo(baseName.c_str(), &currentState, pluginStates, URHO3D_ARRAYSIZE(pluginStates)))
             {
-#if !URHO3D_STATIC
+    #if !URHO3D_STATIC
                 if (currentState == 0)
                 {
                     if (loaded)
@@ -410,11 +414,11 @@ void Project::RenderSettingsUI()
                     if (plugin != nullptr)
                         plugin->SetPrivate(currentState == 1);
                 }
-#endif
+    #endif
             }
-#if URHO3D_STATIC
+    #if URHO3D_STATIC
             ui::SetHelpTooltip("Plugin state is read-only in static builds.");
-#endif
+    #endif
         }
         if (!hasPlugins)
         {
@@ -422,7 +426,7 @@ void Project::RenderSettingsUI()
             ui::SetHelpTooltip("Plugins are shared libraries that have a class inheriting from PluginApplication and "
                                "define a plugin entry point. Look at Samples/103_GamePlugin for more information.");
         }
-        ui::PopID();        // Plugins
+        ui::PopID(); // Plugins
 #endif
         ui::PushID("Resource Paths");
         ui::Separator();
@@ -496,7 +500,7 @@ void Project::RenderSettingsUI()
             if (i == 0)
             {
                 ui::PopItemFlag();
-                ui::PopStyleColor();        // ImGuiCol_TextDisabled
+                ui::PopStyleColor(); // ImGuiCol_TextDisabled
             }
             ui::SameLine();
 
@@ -514,11 +518,11 @@ void Project::RenderSettingsUI()
                 ++i;
 
             ui::SetHelpTooltip("Remove resource directory. This does not delete any files.");
-            ui::PopID();    // i
+            ui::PopID(); // i
         }
-        ui::PopID();        // Resource Paths
+        ui::PopID(); // Resource Paths
 
-        ui::EndTabItem();   // General
+        ui::EndTabItem(); // General
     }
 }
 
@@ -568,4 +572,4 @@ void Project::OnRedo()
     undo_->Redo();
 }
 
-}
+} // namespace Urho3D
