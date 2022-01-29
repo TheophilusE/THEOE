@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -58,11 +59,23 @@ class XMLElement;
 
 struct CollisionGeometryData;
 
+enum URHO3D_API SolverType
+{
+    SOLVER_TYPE_SEQUENTIAL_IMPULSE,
+    SOLVER_TYPE_SEQUENTIAL_IMPULSE_MT,
+    SOLVER_TYPE_NNCG,
+    SOLVER_TYPE_MLCP_PGS,
+    SOLVER_TYPE_MLCP_DANTZIG,
+    SOLVER_TYPE_MLCP_LEMKE,
+
+    SOLVER_TYPE_COUNT
+};
+
 /// Physics raycast hit.
 struct URHO3D_API PhysicsRaycastResult
 {
     /// Test for inequality, added to prevent GCC from complaining.
-    bool operator !=(const PhysicsRaycastResult& rhs) const
+    bool operator!=(const PhysicsRaycastResult& rhs) const
     {
         return position_ != rhs.position_ || normal_ != rhs.normal_ || distance_ != rhs.distance_ || body_ != rhs.body_;
     }
@@ -96,9 +109,9 @@ struct DelayedWorldTransform
 struct ManifoldPair
 {
     /// Construct with defaults.
-    ManifoldPair() :
-        manifold_(nullptr),
-        flippedManifold_(nullptr)
+    ManifoldPair()
+        : manifold_(nullptr)
+        , flippedManifold_(nullptr)
     {
     }
 
@@ -111,8 +124,8 @@ struct ManifoldPair
 /// Custom overrides of physics internals. To use overrides, must be set before the physics component is created.
 struct PhysicsWorldConfig
 {
-    PhysicsWorldConfig() :
-        collisionConfig_(nullptr)
+    PhysicsWorldConfig()
+        : collisionConfig_(nullptr)
     {
     }
 
@@ -124,10 +137,10 @@ static const int DEFAULT_FPS = 60;
 static const float DEFAULT_MAX_NETWORK_ANGULAR_VELOCITY = 100.0f;
 
 /// Cache of collision geometry data.
-using CollisionGeometryDataCache = ea::unordered_map<ea::pair<Model*, unsigned>, SharedPtr<CollisionGeometryData> >;
+using CollisionGeometryDataCache = ea::unordered_map<ea::pair<Model*, unsigned>, SharedPtr<CollisionGeometryData>>;
 
 /// Physics simulation world component. Should be added only to the root scene node.
-class URHO3D_API PhysicsWorld : public Component, public btIDebugDraw
+class URHO3D_API PhysicsWorld : public Component , public btIDebugDraw
 {
     URHO3D_OBJECT(PhysicsWorld, Component);
 
@@ -150,8 +163,8 @@ public:
     /// Log warning from the physics engine.
     void reportErrorWarning(const char* warningString) override;
     /// Draw a physics debug contact point. Not implemented.
-    void drawContactPoint
-        (const btVector3& pointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime, const btVector3& color) override;
+    void drawContactPoint(const btVector3& pointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime,
+        const btVector3& color) override;
     /// Draw physics debug 3D text. Not implemented.
     void draw3dText(const btVector3& location, const char* textString) override;
 
@@ -174,7 +187,8 @@ public:
     /// Set gravity.
     /// @property
     void SetGravity(const Vector3& gravity);
-    /// Set maximum number of physics substeps per frame. 0 (default) is unlimited. Positive values cap the amount. Use a negative value to enable an adaptive timestep. This may cause inconsistent physics behavior.
+    /// Set maximum number of physics substeps per frame. 0 (default) is unlimited. Positive values cap the amount. Use
+    /// a negative value to enable an adaptive timestep. This may cause inconsistent physics behavior.
     /// @property
     void SetMaxSubSteps(int num);
     /// Set number of constraint solver iterations.
@@ -195,31 +209,40 @@ public:
     /// Set maximum angular velocity for network replication.
     void SetMaxNetworkAngularVelocity(float velocity);
     /// Perform a physics world raycast and return all hits.
-    void Raycast
-        (ea::vector<PhysicsRaycastResult>& result, const Ray& ray, float maxDistance, unsigned collisionMask = M_MAX_UNSIGNED);
+    void Raycast(ea::vector<PhysicsRaycastResult>& result, const Ray& ray, float maxDistance,
+        unsigned collisionMask = M_MAX_UNSIGNED);
     /// Perform a physics world raycast and return the closest hit.
-    void RaycastSingle(PhysicsRaycastResult& result, const Ray& ray, float maxDistance, unsigned collisionMask = M_MAX_UNSIGNED);
+    void RaycastSingle(
+        PhysicsRaycastResult& result, const Ray& ray, float maxDistance, unsigned collisionMask = M_MAX_UNSIGNED);
     /// Perform a physics world segmented raycast and return the closest hit. Useful for big scenes with many bodies.
-    /// overlapDistance is used to make sure there are no gap between segments, and must be smaller than segmentDistance.
-    void RaycastSingleSegmented(PhysicsRaycastResult& result, const Ray& ray, float maxDistance, float segmentDistance, unsigned collisionMask = M_MAX_UNSIGNED, float overlapDistance = 0.1f);
+    /// overlapDistance is used to make sure there are no gap between segments, and must be smaller than
+    /// segmentDistance.
+    void RaycastSingleSegmented(PhysicsRaycastResult& result, const Ray& ray, float maxDistance, float segmentDistance,
+        unsigned collisionMask = M_MAX_UNSIGNED, float overlapDistance = 0.1f);
     /// Perform a physics world swept sphere test and return the closest hit.
-    void SphereCast
-        (PhysicsRaycastResult& result, const Ray& ray, float radius, float maxDistance, unsigned collisionMask = M_MAX_UNSIGNED);
+    void SphereCast(PhysicsRaycastResult& result, const Ray& ray, float radius, float maxDistance,
+        unsigned collisionMask = M_MAX_UNSIGNED);
     /// Perform a physics world swept convex test using a user-supplied collision shape and return the first hit.
-    void ConvexCast(PhysicsRaycastResult& result, CollisionShape* shape, const Vector3& startPos, const Quaternion& startRot,
-        const Vector3& endPos, const Quaternion& endRot, unsigned collisionMask = M_MAX_UNSIGNED);
+    void ConvexCast(PhysicsRaycastResult& result, CollisionShape* shape, const Vector3& startPos,
+        const Quaternion& startRot, const Vector3& endPos, const Quaternion& endRot,
+        unsigned collisionMask = M_MAX_UNSIGNED);
     /// Perform a physics world swept convex test using a user-supplied Bullet collision shape and return the first hit.
-    void ConvexCast(PhysicsRaycastResult& result, btCollisionShape* shape, const Vector3& startPos, const Quaternion& startRot,
-        const Vector3& endPos, const Quaternion& endRot, unsigned collisionMask = M_MAX_UNSIGNED);
+    void ConvexCast(PhysicsRaycastResult& result, btCollisionShape* shape, const Vector3& startPos,
+        const Quaternion& startRot, const Vector3& endPos, const Quaternion& endRot,
+        unsigned collisionMask = M_MAX_UNSIGNED);
     /// Invalidate cached collision geometry for a model.
     void RemoveCachedGeometry(Model* model);
     /// Return rigid bodies by a sphere query.
     void GetRigidBodies(ea::vector<RigidBody*>& result, const Sphere& sphere, unsigned collisionMask = M_MAX_UNSIGNED);
     /// Return rigid bodies by a box query.
-    void GetRigidBodies(ea::vector<RigidBody*>& result, const BoundingBox& box, unsigned collisionMask = M_MAX_UNSIGNED);
-    /// Return rigid bodies by contact test with the specified body. It needs to be active to return all contacts reliably.
+    void GetRigidBodies(
+        ea::vector<RigidBody*>& result, const BoundingBox& box, unsigned collisionMask = M_MAX_UNSIGNED);
+    /// Return rigid bodies by contact test with the specified body. It needs to be active to return all contacts
+    /// reliably.
     void GetRigidBodies(ea::vector<RigidBody*>& result, const RigidBody* body);
-    /// Return rigid bodies that have been in collision with the specified body on the last simulation step. Only returns collisions that were sent as events (depends on collision event mode) and excludes e.g. static-static collisions.
+    /// Return rigid bodies that have been in collision with the specified body on the last simulation step. Only
+    /// returns collisions that were sent as events (depends on collision event mode) and excludes e.g. static-static
+    /// collisions.
     void GetCollidingBodies(ea::vector<RigidBody*>& result, const RigidBody* body);
 
     /// Return gravity.
@@ -277,6 +300,32 @@ public:
     void SetDebugRenderer(DebugRenderer* debug);
     /// Set debug geometry depth test mode. Called both by PhysicsWorld itself and physics components.
     void SetDebugDepthTest(bool enable);
+
+    /// Set the number of physics threads.
+    void SetThreadCount(int numThreads);
+    /// Set min batch size.
+    void SetMinBatchSize(int size);
+    /// Set max batch size.
+    void SetMaxBatchSize(int size);
+    /// Set island batching threshold.
+    void SetIslandBatchingThreshold(int count);
+    /// Set least squares residual threshold.
+    void SetLeastSquaresResidualThreshold(float threshold);
+    /// Set allow nested parallel for loops.
+    void SetAllowNestedParallelForLoops(bool enable);
+
+    /// Get the number of physics threads.
+    int GetThreadCount() const;
+    /// Get min batch size.
+    int GetMinBatchSize() const;
+    /// Get max batch size.
+    int GetMaxBatchSize() const;
+    /// Get the island batching threshold.
+    int GetIslandBatchingThreshold() const;
+    /// Get least squares residual threshold.
+    float GetLeastSquaresResidualThreshold() const;
+    /// Get allow nested parallel for loops.
+    bool GetAllowNestedParallelForLoops() const;
 
     /// Return the Bullet physics world.
     btDiscreteDynamicsWorld* GetWorld() { return world_.get(); }
@@ -338,9 +387,10 @@ private:
     /// Constraints in the world.
     ea::vector<Constraint*> constraints_;
     /// Collision pairs on this frame.
-    ea::unordered_map<ea::pair<WeakPtr<RigidBody>, WeakPtr<RigidBody> >, ManifoldPair> currentCollisions_;
-    /// Collision pairs on the previous frame. Used to check if a collision is "new." Manifolds are not guaranteed to exist anymore.
-    ea::unordered_map<ea::pair<WeakPtr<RigidBody>, WeakPtr<RigidBody> >, ManifoldPair> previousCollisions_;
+    ea::unordered_map<ea::pair<WeakPtr<RigidBody>, WeakPtr<RigidBody>>, ManifoldPair> currentCollisions_;
+    /// Collision pairs on the previous frame. Used to check if a collision is "new." Manifolds are not guaranteed to
+    /// exist anymore.
+    ea::unordered_map<ea::pair<WeakPtr<RigidBody>, WeakPtr<RigidBody>>, ManifoldPair> previousCollisions_;
     /// Delayed (parented) world transform assignments.
     ea::unordered_map<RigidBody*, DelayedWorldTransform> delayedWorldTransforms_;
     /// Cache for trimesh geometry data by model and LOD level.
@@ -355,9 +405,24 @@ private:
     VariantMap nodeCollisionData_;
     /// Preallocated buffer for physics collision contact data.
     VectorBuffer contacts_;
+    /// Solver type for the Physics World.
+    SolverType solverType_;
     /// Simulation substeps per second.
     unsigned fps_{DEFAULT_FPS};
-    /// Maximum number of simulation substeps per frame. 0 (default) unlimited, or negative values for adaptive timestep.
+    /// Solver iterations.
+    int solverIterations_{10};
+    /// Number of threads to use.
+    int threadCount_;
+    /// The the number of manifolds an island needs to be too large for parallel dispatch.
+    int islandBatchingThreshold_;
+    /// Minimum batch size.
+    int minBatchSize_;
+    /// Maximum batch size.
+    int maxBatchSize_;
+    /// Least Squares Residual Threshold. This is used to run fewer solver iterations when convergence is good).
+    float leastSquaresResidualThreshold_;
+    /// Maximum number of simulation substeps per frame. 0 (default) unlimited, or negative values for adaptive
+    /// timestep.
     int maxSubSteps_{};
     /// Time accumulator for non-interpolated mode.
     float timeAcc_{};
@@ -375,6 +440,10 @@ private:
     bool simulating_{};
     /// Debug draw depth test mode.
     bool debugDepthTest_{};
+    /// Enable multithreaded world.
+    bool multithreadedWorld_;
+    /// Flag that checks if multithreading is possible.
+    bool multithreadCapable_;
     /// Debug renderer.
     DebugRenderer* debugRenderer_{};
     /// Debug draw flags.
@@ -387,4 +456,4 @@ private:
 /// @nobind
 void URHO3D_API RegisterPhysicsLibrary(Context* context);
 
-}
+} // namespace Urho3D

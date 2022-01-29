@@ -36,7 +36,7 @@ target_include_directories(Bullet SYSTEM
 )
 
 if (URHO3D_SSE)
-    target_compile_definitions(Bullet PUBLIC -DBT_USE_SSE=1)
+    target_compile_definitions(Bullet PUBLIC -DBT_USE_SSE=1 -DBT_THREADSAFE=1)
 endif ()
 
 if (NOT MINI_URHO)

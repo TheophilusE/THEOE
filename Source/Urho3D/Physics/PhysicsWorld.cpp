@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,13 +28,14 @@
 #include "../Core/Context.h"
 #include "../Core/Mutex.h"
 #include "../Core/Profiler.h"
+#include "../Core/WorkQueue.h"
 #include "../Graphics/DebugRenderer.h"
 #include "../Graphics/Model.h"
 #include "../IO/Log.h"
 #include "../Math/Ray.h"
-#include "../Physics/KinematicCharacterController.h"
 #include "../Physics/CollisionShape.h"
 #include "../Physics/Constraint.h"
+#include "../Physics/KinematicCharacterController.h"
 #include "../Physics/PhysicsEvents.h"
 #include "../Physics/PhysicsUtils.h"
 #include "../Physics/PhysicsWorld.h"
@@ -42,14 +44,22 @@
 #include "../Scene/Scene.h"
 #include "../Scene/SceneEvents.h"
 
+#include "BulletCollision/CollisionDispatch/btCollisionDispatcherMt.h"
+#include "BulletDynamics/ConstraintSolver/btNNCGConstraintSolver.h"
+#include "BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
+#include "BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolverMt.h"
+#include "BulletDynamics/Dynamics/btDiscreteDynamicsWorldMt.h"
+#include "BulletDynamics/Dynamics/btSimulationIslandManagerMt.h" // for setSplitIslands()
+#include "BulletDynamics/MLCPSolvers/btDantzigSolver.h"
+#include "BulletDynamics/MLCPSolvers/btLemkeSolver.h"
+#include "BulletDynamics/MLCPSolvers/btMLCPSolver.h"
+#include "BulletDynamics/MLCPSolvers/btSolveProjectedGaussSeidel.h"
 #include <Bullet/BulletCollision/BroadphaseCollision/btDbvtBroadphase.h>
 #include <Bullet/BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h>
 #include <Bullet/BulletCollision/CollisionDispatch/btInternalEdgeUtility.h>
 #include <Bullet/BulletCollision/CollisionShapes/btBoxShape.h>
 #include <Bullet/BulletCollision/CollisionShapes/btSphereShape.h>
 #include <Bullet/BulletCollision/Gimpact/btGImpactCollisionAlgorithm.h>
-#include <Bullet/BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h>
-#include <Bullet/BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h>
 #include <BulletCollision/CollisionDispatch/btGhostObject.h>
 
 extern ContactAddedCallback gContactAddedCallback;
@@ -62,6 +72,103 @@ extern const char* SUBSYSTEM_CATEGORY;
 
 static const int MAX_SOLVER_ITERATIONS = 256;
 static const Vector3 DEFAULT_GRAVITY = Vector3(0.0f, -9.81f, 0.0f);
+
+btConstraintSolver* createSolverByType(SolverType t)
+{
+    btMLCPSolverInterface* mlcpSolver = NULL;
+    switch (t)
+    {
+    case SOLVER_TYPE_SEQUENTIAL_IMPULSE: return new btSequentialImpulseConstraintSolver();
+    case SOLVER_TYPE_SEQUENTIAL_IMPULSE_MT: return new btSequentialImpulseConstraintSolverMt();
+    case SOLVER_TYPE_NNCG: return new btNNCGConstraintSolver();
+    case SOLVER_TYPE_MLCP_PGS: mlcpSolver = new btSolveProjectedGaussSeidel(); break;
+    case SOLVER_TYPE_MLCP_DANTZIG: mlcpSolver = new btDantzigSolver(); break;
+    case SOLVER_TYPE_MLCP_LEMKE: mlcpSolver = new btLemkeSolver(); break;
+    default:
+    {
+    }
+    }
+    if (mlcpSolver)
+    {
+        return new btMLCPSolver(mlcpSolver);
+    }
+    return NULL;
+}
+
+///
+/// btTaskSchedulerManager -- manage a number of task schedulers so we can switch between them
+///
+class btTaskSchedulerManager
+{
+    ea::vector<btITaskScheduler*> m_taskSchedulers;
+    ea::vector<btITaskScheduler*> m_allocatedTaskSchedulers;
+
+public:
+    btTaskSchedulerManager() {}
+    void init()
+    {
+        addTaskScheduler(btGetSequentialTaskScheduler());
+#if BT_THREADSAFE
+        if (btITaskScheduler* ts = btCreateDefaultTaskScheduler())
+        {
+            m_allocatedTaskSchedulers.push_back(ts);
+            addTaskScheduler(ts);
+        }
+        addTaskScheduler(btGetOpenMPTaskScheduler());
+        addTaskScheduler(btGetTBBTaskScheduler());
+        addTaskScheduler(btGetPPLTaskScheduler());
+        if (getNumTaskSchedulers() > 1)
+        {
+            // prefer a non-sequential scheduler if available
+            btSetTaskScheduler(m_taskSchedulers[1]);
+        }
+        else
+        {
+            btSetTaskScheduler(m_taskSchedulers[0]);
+        }
+#endif // #if BT_THREADSAFE
+    }
+    void shutdown()
+    {
+        for (int i = 0; i < m_allocatedTaskSchedulers.size(); ++i)
+        {
+            delete m_allocatedTaskSchedulers[i];
+        }
+        m_allocatedTaskSchedulers.clear();
+    }
+
+    void addTaskScheduler(btITaskScheduler* ts)
+    {
+        if (ts)
+        {
+#if BT_THREADSAFE
+            // if initial number of threads is 0 or 1,
+            if (ts->getNumThreads() <= 1)
+            {
+                // for OpenMP, TBB, PPL set num threads to number of logical cores
+                ts->setNumThreads(ts->getMaxNumThreads());
+            }
+#endif // #if BT_THREADSAFE
+            m_taskSchedulers.push_back(ts);
+        }
+    }
+
+    int getNumTaskSchedulers() const { return m_taskSchedulers.size(); }
+    btITaskScheduler* getTaskScheduler(int i) { return m_taskSchedulers[i]; }
+};
+
+static btTaskSchedulerManager gTaskSchedulerMgr;
+
+#if BT_THREADSAFE
+static SolverType gSolverType = SOLVER_TYPE_SEQUENTIAL_IMPULSE_MT;
+#else
+static SolverType gSolverType = SOLVER_TYPE_SEQUENTIAL_IMPULSE;
+#endif
+static int gSolverMode = SOLVER_SIMD | SOLVER_USE_WARMSTARTING |
+    // SOLVER_RANDMIZE_ORDER |
+    // SOLVER_INTERLEAVE_CONTACT_AND_FRICTION_CONSTRAINTS |
+    // SOLVER_USE_2_FRICTION_DIRECTIONS |
+    0;
 
 PhysicsWorldConfig PhysicsWorld::config;
 
@@ -80,8 +187,8 @@ void InternalTickCallback(btDynamicsWorld* world, btScalar timeStep)
     static_cast<PhysicsWorld*>(world->getWorldUserInfo())->PostStep(timeStep);
 }
 
-static bool CustomMaterialCombinerCallback(btManifoldPoint& cp, const btCollisionObjectWrapper* colObj0Wrap, int partId0,
-    int index0, const btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1)
+static bool CustomMaterialCombinerCallback(btManifoldPoint& cp, const btCollisionObjectWrapper* colObj0Wrap,
+    int partId0, int index0, const btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1)
 {
     // Ensure that shape type of colObj1Wrap is either btScaledBvhTriangleMeshShape or btBvhTriangleMeshShape
     // because btAdjustInternalEdgeContacts doesn't check types properly. Bug in the Bullet?
@@ -92,7 +199,8 @@ static bool CustomMaterialCombinerCallback(btManifoldPoint& cp, const btCollisio
         btAdjustInternalEdgeContacts(cp, colObj1Wrap, colObj0Wrap, partId1, index1);
     }
 
-    cp.m_combinedFriction = colObj0Wrap->getCollisionObject()->getFriction() * colObj1Wrap->getCollisionObject()->getFriction();
+    cp.m_combinedFriction =
+        colObj0Wrap->getCollisionObject()->getFriction() * colObj1Wrap->getCollisionObject()->getFriction();
     cp.m_combinedRestitution =
         colObj0Wrap->getCollisionObject()->getRestitution() * colObj1Wrap->getCollisionObject()->getRestitution();
 
@@ -123,9 +231,9 @@ void CleanupGeometryCacheImpl(CollisionGeometryDataCache& cache)
 struct PhysicsQueryCallback : public btCollisionWorld::ContactResultCallback
 {
     /// Construct.
-    PhysicsQueryCallback(ea::vector<RigidBody*>& result, unsigned collisionMask) :
-        result_(result),
-        collisionMask_(collisionMask)
+    PhysicsQueryCallback(ea::vector<RigidBody*>& result, unsigned collisionMask)
+        : result_(result)
+        , collisionMask_(collisionMask)
     {
     }
 
@@ -148,32 +256,130 @@ struct PhysicsQueryCallback : public btCollisionWorld::ContactResultCallback
     unsigned collisionMask_;
 };
 
-PhysicsWorld::PhysicsWorld(Context* context) :
-    Component(context),
-    fps_(DEFAULT_FPS),
-    debugMode_(btIDebugDraw::DBG_DrawWireframe | btIDebugDraw::DBG_DrawConstraints | btIDebugDraw::DBG_DrawConstraintLimits)
+PhysicsWorld::PhysicsWorld(Context* context)
+    : Component(context)
+    , fps_(DEFAULT_FPS)
+    , debugMode_(
+          btIDebugDraw::DBG_DrawWireframe | btIDebugDraw::DBG_DrawConstraints | btIDebugDraw::DBG_DrawConstraintLimits)
+    , multithreadedWorld_(true)
+    , solverIterations_(10)
+    , threadCount_(1)
+    , islandBatchingThreshold_(0)
+    , minBatchSize_(btSequentialImpulseConstraintSolverMt::s_minBatchSize)
+    , maxBatchSize_(btSequentialImpulseConstraintSolverMt::s_maxBatchSize)
+    , leastSquaresResidualThreshold_(0)
 {
-    gContactAddedCallback = CustomMaterialCombinerCallback;
+    multithreadCapable_ = false;
 
-    if (PhysicsWorld::config.collisionConfig_)
-        collisionConfiguration_ = PhysicsWorld::config.collisionConfig_;
+    if (gTaskSchedulerMgr.getNumTaskSchedulers() == 0)
+    {
+        gTaskSchedulerMgr.init();
+    }
+
+    solverType_ = gSolverType;
+
+#if BT_THREADSAFE
+    btAssert(btGetTaskScheduler() != NULL);
+    if (NULL != btGetTaskScheduler() && gTaskSchedulerMgr.getNumTaskSchedulers() > 1)
+    {
+        multithreadCapable_ = true;
+    }
+#endif
+
+    if (multithreadedWorld_ && multithreadCapable_)
+    {
+        URHO3D_LOGINFO("Physics World Initialization With Multi-Thread Enabled");
+        URHO3D_LOGINFO("Physics World Thread Count {}", gTaskSchedulerMgr.getTaskScheduler(1)->getNumThreads());
+
+#if BT_THREADSAFE
+        if (collisionDispatcher_)
+        {
+            btDispatcher* dispatcher = collisionDispatcher_.release();
+            delete dispatcher;
+        }
+
+        if (PhysicsWorld::config.collisionConfig_)
+            collisionConfiguration_ = PhysicsWorld::config.collisionConfig_;
+        else
+        {
+            btDefaultCollisionConstructionInfo cci;
+            cci.m_defaultMaxPersistentManifoldPoolSize = 80000;
+            cci.m_defaultMaxCollisionAlgorithmPoolSize = 80000;
+            collisionConfiguration_ = new btDefaultCollisionConfiguration(cci);
+        }
+
+        collisionDispatcher_ = ea::make_unique<btCollisionDispatcherMt>(collisionConfiguration_, 40);
+        btGImpactCollisionAlgorithm::registerAlgorithm(static_cast<btCollisionDispatcher*>(collisionDispatcher_.get()));
+        broadphase_ = ea::make_unique<btDbvtBroadphase>();
+
+        btConstraintSolverPoolMt* solverPool;
+        {
+            SolverType poolSolverType = solverType_;
+            if (poolSolverType == SOLVER_TYPE_SEQUENTIAL_IMPULSE_MT)
+            {
+                // pool solvers shouldn't be parallel solvers, we don't allow that kind of
+                // nested parallelism because of performance issues
+                poolSolverType = SOLVER_TYPE_SEQUENTIAL_IMPULSE;
+            }
+            btConstraintSolver* solvers[BT_MAX_THREAD_COUNT];
+            int maxThreadCount = BT_MAX_THREAD_COUNT;
+            for (int i = 0; i < maxThreadCount; ++i)
+            {
+                solvers[i] = createSolverByType(poolSolverType);
+            }
+            solverPool = new btConstraintSolverPoolMt(solvers, maxThreadCount);
+            solver_.reset(solverPool);
+        }
+
+        btSequentialImpulseConstraintSolverMt* solverMt = NULL;
+        if (solverType_ == SOLVER_TYPE_SEQUENTIAL_IMPULSE_MT)
+        {
+            solverMt = new btSequentialImpulseConstraintSolverMt();
+        }
+
+        world_ = ea::make_unique<btDiscreteDynamicsWorldMt>(
+            collisionDispatcher_.get(), broadphase_.get(), solverPool, solverMt, collisionConfiguration_);
+        btAssert(btGetTaskScheduler() != NULL);
+#endif // #if BT_THREADSAFE
+    }
     else
-        collisionConfiguration_ = new btDefaultCollisionConfiguration();
+    {
+        // single threaded world
 
-    collisionDispatcher_ = ea::make_unique<btCollisionDispatcher>(collisionConfiguration_);
-    btGImpactCollisionAlgorithm::registerAlgorithm(static_cast<btCollisionDispatcher*>(collisionDispatcher_.get()));
+        URHO3D_LOGINFO("Physics World Initialization With Multi-Thread Enabled");
 
-    broadphase_ = ea::make_unique<btDbvtBroadphase>();
-    solver_ = ea::make_unique<btSequentialImpulseConstraintSolver>();
-    world_ = ea::make_unique<btDiscreteDynamicsWorld>(collisionDispatcher_.get(), broadphase_.get(), solver_.get(), collisionConfiguration_);
+        if (PhysicsWorld::config.collisionConfig_)
+            collisionConfiguration_ = PhysicsWorld::config.collisionConfig_;
+        else
+            collisionConfiguration_ = new btDefaultCollisionConfiguration();
+
+        collisionDispatcher_ = ea::make_unique<btCollisionDispatcher>(collisionConfiguration_);
+        btGImpactCollisionAlgorithm::registerAlgorithm(static_cast<btCollisionDispatcher*>(collisionDispatcher_.get()));
+
+        broadphase_ = ea::make_unique<btDbvtBroadphase>();
+
+        SolverType solverType = solverType_;
+        if (solverType == SOLVER_TYPE_SEQUENTIAL_IMPULSE_MT)
+        {
+            // using the parallel solver with the single-threaded world works, but is
+            // disabled here to avoid confusion
+            solverType = SOLVER_TYPE_SEQUENTIAL_IMPULSE;
+        }
+
+        solver_.reset(createSolverByType(solverType));
+        world_ = ea::make_unique<btDiscreteDynamicsWorld>(
+            collisionDispatcher_.get(), broadphase_.get(), solver_.get(), collisionConfiguration_);
+    }
+
+    gContactAddedCallback = CustomMaterialCombinerCallback;
 
     world_->setGravity(ToBtVector3(DEFAULT_GRAVITY));
     world_->getDispatchInfo().m_useContinuous = true;
-    world_->getSolverInfo().m_splitImpulse = false; // Disable by default for performance
     world_->setDebugDrawer(this);
     world_->setInternalTickCallback(InternalPreTickCallback, static_cast<void*>(this), true);
     world_->setInternalTickCallback(InternalTickCallback, static_cast<void*>(this), false);
-    world_->setSynchronizeAllMotionStates(true);
+    world_->getSolverInfo().m_solverMode = gSolverMode;
+    world_->getSolverInfo().m_numIterations = Max(1, solverIterations_);
 
     // Add ghost pair callback
     ghostPairCallback_ = new btGhostPairCallback();
@@ -205,7 +411,6 @@ PhysicsWorld::~PhysicsWorld()
         delete collisionConfiguration_;
     collisionConfiguration_ = nullptr;
 
-
     // Delete GhostPair callback
     if (ghostPairCallback_)
     {
@@ -218,14 +423,29 @@ void PhysicsWorld::RegisterObject(Context* context)
 {
     context->RegisterFactory<PhysicsWorld>(SUBSYSTEM_CATEGORY);
 
+    URHO3D_ATTRIBUTE("Multithread World", bool, multithreadedWorld_, true, AM_DEFAULT);
+
     URHO3D_MIXED_ACCESSOR_ATTRIBUTE("Gravity", GetGravity, SetGravity, Vector3, DEFAULT_GRAVITY, AM_DEFAULT);
     URHO3D_ATTRIBUTE("Physics FPS", int, fps_, DEFAULT_FPS, AM_DEFAULT);
     URHO3D_ATTRIBUTE("Max Substeps", int, maxSubSteps_, 0, AM_DEFAULT);
     URHO3D_ACCESSOR_ATTRIBUTE("Solver Iterations", GetNumIterations, SetNumIterations, int, 10, AM_DEFAULT);
-    URHO3D_ATTRIBUTE("Net Max Angular Vel.", float, maxNetworkAngularVelocity_, DEFAULT_MAX_NETWORK_ANGULAR_VELOCITY, AM_DEFAULT);
+    URHO3D_ATTRIBUTE(
+        "Net Max Angular Vel.", float, maxNetworkAngularVelocity_, DEFAULT_MAX_NETWORK_ANGULAR_VELOCITY, AM_DEFAULT);
     URHO3D_ATTRIBUTE("Interpolation", bool, interpolation_, true, AM_FILE);
     URHO3D_ATTRIBUTE("Internal Edge Utility", bool, internalEdge_, true, AM_DEFAULT);
     URHO3D_ACCESSOR_ATTRIBUTE("Split Impulse", GetSplitImpulse, SetSplitImpulse, bool, false, AM_DEFAULT);
+
+    URHO3D_ACCESSOR_ATTRIBUTE("Set Thread Count", GetThreadCount, SetThreadCount, int, 1, AM_DEFAULT);
+    URHO3D_ACCESSOR_ATTRIBUTE("Set Island Batching Threshold", GetIslandBatchingThreshold, SetIslandBatchingThreshold,
+        int, btSequentialImpulseConstraintSolverMt::s_minimumContactManifoldsForBatching, AM_DEFAULT);
+    URHO3D_ACCESSOR_ATTRIBUTE("Set Min Batch Count", GetMinBatchSize, SetMinBatchSize, int,
+        btSequentialImpulseConstraintSolverMt::s_minBatchSize, AM_DEFAULT);
+    URHO3D_ACCESSOR_ATTRIBUTE("Set Max Batch Count", GetMaxBatchSize, SetMaxBatchSize, int,
+        btSequentialImpulseConstraintSolverMt::s_maxBatchSize, AM_DEFAULT);
+    URHO3D_ACCESSOR_ATTRIBUTE("Set Least Squares Residual Threshold", GetLeastSquaresResidualThreshold,
+        SetLeastSquaresResidualThreshold, float, 0.0f, AM_DEFAULT);
+    URHO3D_ACCESSOR_ATTRIBUTE("Set Allow Nested Parallel For-Loops", GetAllowNestedParallelForLoops,
+        SetAllowNestedParallelForLoops, bool, false, AM_DEFAULT);
 }
 
 bool PhysicsWorld::isVisible(const btVector3& aabbMin, const btVector3& aabbMax)
@@ -239,7 +459,8 @@ bool PhysicsWorld::isVisible(const btVector3& aabbMin, const btVector3& aabbMax)
 void PhysicsWorld::drawLine(const btVector3& from, const btVector3& to, const btVector3& color)
 {
     if (debugRenderer_)
-        debugRenderer_->AddLine(ToVector3(from), ToVector3(to), Color(color.x(), color.y(), color.z()), debugDepthTest_);
+        debugRenderer_->AddLine(
+            ToVector3(from), ToVector3(to), Color(color.x(), color.y(), color.z()), debugDepthTest_);
 }
 
 void PhysicsWorld::DrawDebugGeometry(DebugRenderer* debug, bool depthTest)
@@ -260,14 +481,12 @@ void PhysicsWorld::reportErrorWarning(const char* warningString)
     URHO3D_LOGWARNING("Physics: " + ea::string(warningString));
 }
 
-void PhysicsWorld::drawContactPoint(const btVector3& pointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime,
-    const btVector3& color)
+void PhysicsWorld::drawContactPoint(
+    const btVector3& pointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime, const btVector3& color)
 {
 }
 
-void PhysicsWorld::draw3dText(const btVector3& location, const char* textString)
-{
-}
+void PhysicsWorld::draw3dText(const btVector3& location, const char* textString) {}
 
 void PhysicsWorld::Update(float timeStep)
 {
@@ -304,8 +523,7 @@ void PhysicsWorld::Update(float timeStep)
     // Apply delayed (parented) world transforms now
     while (!delayedWorldTransforms_.empty())
     {
-        for (auto i = delayedWorldTransforms_.begin();
-             i != delayedWorldTransforms_.end();)
+        for (auto i = delayedWorldTransforms_.begin(); i != delayedWorldTransforms_.end();)
         {
             const DelayedWorldTransform& transform = i->second;
 
@@ -321,10 +539,7 @@ void PhysicsWorld::Update(float timeStep)
     }
 }
 
-void PhysicsWorld::UpdateCollisions()
-{
-    world_->performDiscreteCollisionDetection();
-}
+void PhysicsWorld::UpdateCollisions() { world_->performDiscreteCollisionDetection(); }
 
 void PhysicsWorld::SetFps(int fps)
 {
@@ -348,21 +563,15 @@ void PhysicsWorld::SetMaxSubSteps(int num)
 
 void PhysicsWorld::SetNumIterations(int num)
 {
-    num = Clamp(num, 1, MAX_SOLVER_ITERATIONS);
-    world_->getSolverInfo().m_numIterations = num;
+    solverIterations_ = Clamp(num, 1, MAX_SOLVER_ITERATIONS);
+    world_->getSolverInfo().m_numIterations = solverIterations_;
 
     MarkNetworkUpdate();
 }
 
-void PhysicsWorld::SetUpdateEnabled(bool enable)
-{
-    updateEnabled_ = enable;
-}
+void PhysicsWorld::SetUpdateEnabled(bool enable) { updateEnabled_ = enable; }
 
-void PhysicsWorld::SetInterpolation(bool enable)
-{
-    interpolation_ = enable;
-}
+void PhysicsWorld::SetInterpolation(bool enable) { interpolation_ = enable; }
 
 void PhysicsWorld::SetInternalEdge(bool enable)
 {
@@ -385,15 +594,16 @@ void PhysicsWorld::SetMaxNetworkAngularVelocity(float velocity)
     MarkNetworkUpdate();
 }
 
-void PhysicsWorld::Raycast(ea::vector<PhysicsRaycastResult>& result, const Ray& ray, float maxDistance, unsigned collisionMask)
+void PhysicsWorld::Raycast(
+    ea::vector<PhysicsRaycastResult>& result, const Ray& ray, float maxDistance, unsigned collisionMask)
 {
     URHO3D_PROFILE("PhysicsRaycast");
 
     if (maxDistance >= M_INFINITY)
         URHO3D_LOGWARNING("Infinite maxDistance in physics raycast is not supported");
 
-    btCollisionWorld::AllHitsRayResultCallback
-        rayCallback(ToBtVector3(ray.origin_), ToBtVector3(ray.origin_ + maxDistance * ray.direction_));
+    btCollisionWorld::AllHitsRayResultCallback rayCallback(
+        ToBtVector3(ray.origin_), ToBtVector3(ray.origin_ + maxDistance * ray.direction_));
     rayCallback.m_collisionFilterGroup = (short)0xffff;
     rayCallback.m_collisionFilterMask = (short)collisionMask;
 
@@ -413,15 +623,16 @@ void PhysicsWorld::Raycast(ea::vector<PhysicsRaycastResult>& result, const Ray& 
     ea::quick_sort(result.begin(), result.end(), CompareRaycastResults);
 }
 
-void PhysicsWorld::RaycastSingle(PhysicsRaycastResult& result, const Ray& ray, float maxDistance, unsigned collisionMask)
+void PhysicsWorld::RaycastSingle(
+    PhysicsRaycastResult& result, const Ray& ray, float maxDistance, unsigned collisionMask)
 {
     URHO3D_PROFILE("PhysicsRaycastSingle");
 
     if (maxDistance >= M_INFINITY)
         URHO3D_LOGWARNING("Infinite maxDistance in physics raycast is not supported");
 
-    btCollisionWorld::ClosestRayResultCallback
-        rayCallback(ToBtVector3(ray.origin_), ToBtVector3(ray.origin_ + maxDistance * ray.direction_));
+    btCollisionWorld::ClosestRayResultCallback rayCallback(
+        ToBtVector3(ray.origin_), ToBtVector3(ray.origin_ + maxDistance * ray.direction_));
     rayCallback.m_collisionFilterGroup = (short)0xffff;
     rayCallback.m_collisionFilterMask = (short)collisionMask;
 
@@ -445,7 +656,8 @@ void PhysicsWorld::RaycastSingle(PhysicsRaycastResult& result, const Ray& ray, f
     }
 }
 
-void PhysicsWorld::RaycastSingleSegmented(PhysicsRaycastResult& result, const Ray& ray, float maxDistance, float segmentDistance, unsigned collisionMask, float overlapDistance)
+void PhysicsWorld::RaycastSingleSegmented(PhysicsRaycastResult& result, const Ray& ray, float maxDistance,
+    float segmentDistance, unsigned collisionMask, float overlapDistance)
 {
     URHO3D_PROFILE("PhysicsRaycastSingleSegmented");
 
@@ -497,7 +709,8 @@ void PhysicsWorld::RaycastSingleSegmented(PhysicsRaycastResult& result, const Ra
     result.body_ = nullptr;
 }
 
-void PhysicsWorld::SphereCast(PhysicsRaycastResult& result, const Ray& ray, float radius, float maxDistance, unsigned collisionMask)
+void PhysicsWorld::SphereCast(
+    PhysicsRaycastResult& result, const Ray& ray, float radius, float maxDistance, unsigned collisionMask)
 {
     URHO3D_PROFILE("PhysicsSphereCast");
 
@@ -507,8 +720,7 @@ void PhysicsWorld::SphereCast(PhysicsRaycastResult& result, const Ray& ray, floa
     btSphereShape shape(radius);
     Vector3 endPos = ray.origin_ + maxDistance * ray.direction_;
 
-    btCollisionWorld::ClosestConvexResultCallback
-        convexCallback(ToBtVector3(ray.origin_), ToBtVector3(endPos));
+    btCollisionWorld::ClosestConvexResultCallback convexCallback(ToBtVector3(ray.origin_), ToBtVector3(endPos));
     convexCallback.m_collisionFilterGroup = (short)0xffff;
     convexCallback.m_collisionFilterMask = (short)collisionMask;
 
@@ -547,7 +759,8 @@ void PhysicsWorld::ConvexCast(PhysicsRaycastResult& result, CollisionShape* shap
         return;
     }
 
-    // If shape is attached in a rigidbody, set its collision group temporarily to 0 to make sure it is not returned in the sweep result
+    // If shape is attached in a rigidbody, set its collision group temporarily to 0 to make sure it is not returned in
+    // the sweep result
     auto* bodyComp = shape->GetComponent<RigidBody>();
     btRigidBody* body = bodyComp ? bodyComp->GetBody() : nullptr;
     btBroadphaseProxy* proxy = body ? body->getBroadphaseProxy() : nullptr;
@@ -567,7 +780,8 @@ void PhysicsWorld::ConvexCast(PhysicsRaycastResult& result, CollisionShape* shap
     Quaternion effectiveStartRot = startRot * shape->GetRotation();
     Quaternion effectiveEndRot = endRot * shape->GetRotation();
 
-    ConvexCast(result, shape->GetCollisionShape(), effectiveStartPos, effectiveStartRot, effectiveEndPos, effectiveEndRot, collisionMask);
+    ConvexCast(result, shape->GetCollisionShape(), effectiveStartPos, effectiveStartRot, effectiveEndPos,
+        effectiveEndRot, collisionMask);
 
     // Restore the collision group
     if (proxy)
@@ -605,9 +819,9 @@ void PhysicsWorld::ConvexCast(PhysicsRaycastResult& result, btCollisionShape* sh
     convexCallback.m_collisionFilterGroup = (short)0xffff;
     convexCallback.m_collisionFilterMask = (short)collisionMask;
 
-    world_->convexSweepTest(static_cast<btConvexShape*>(shape), btTransform(ToBtQuaternion(startRot),
-            convexCallback.m_convexFromWorld), btTransform(ToBtQuaternion(endRot), convexCallback.m_convexToWorld),
-        convexCallback);
+    world_->convexSweepTest(static_cast<btConvexShape*>(shape),
+        btTransform(ToBtQuaternion(startRot), convexCallback.m_convexFromWorld),
+        btTransform(ToBtQuaternion(endRot), convexCallback.m_convexToWorld), convexCallback);
 
     if (convexCallback.hasHit())
     {
@@ -700,8 +914,7 @@ void PhysicsWorld::GetCollidingBodies(ea::vector<RigidBody*>& result, const Rigi
 
     result.clear();
 
-    for (auto i = currentCollisions_.begin();
-         i != currentCollisions_.end(); ++i)
+    for (auto i = currentCollisions_.begin(); i != currentCollisions_.end(); ++i)
     {
         if (i->first.first == body)
         {
@@ -716,25 +929,13 @@ void PhysicsWorld::GetCollidingBodies(ea::vector<RigidBody*>& result, const Rigi
     }
 }
 
-Vector3 PhysicsWorld::GetGravity() const
-{
-    return ToVector3(world_->getGravity());
-}
+Vector3 PhysicsWorld::GetGravity() const { return ToVector3(world_->getGravity()); }
 
-int PhysicsWorld::GetNumIterations() const
-{
-    return world_->getSolverInfo().m_numIterations;
-}
+int PhysicsWorld::GetNumIterations() const { return solverIterations_; }
 
-bool PhysicsWorld::GetSplitImpulse() const
-{
-    return world_->getSolverInfo().m_splitImpulse != 0;
-}
+bool PhysicsWorld::GetSplitImpulse() const { return world_->getSolverInfo().m_splitImpulse != 0; }
 
-void PhysicsWorld::AddRigidBody(RigidBody* body)
-{
-    rigidBodies_.push_back(body);
-}
+void PhysicsWorld::AddRigidBody(RigidBody* body) { rigidBodies_.push_back(body); }
 
 void PhysicsWorld::RemoveRigidBody(RigidBody* body)
 {
@@ -743,25 +944,13 @@ void PhysicsWorld::RemoveRigidBody(RigidBody* body)
     delayedWorldTransforms_.erase(body);
 }
 
-void PhysicsWorld::AddCollisionShape(CollisionShape* shape)
-{
-    collisionShapes_.push_back(shape);
-}
+void PhysicsWorld::AddCollisionShape(CollisionShape* shape) { collisionShapes_.push_back(shape); }
 
-void PhysicsWorld::RemoveCollisionShape(CollisionShape* shape)
-{
-    collisionShapes_.erase_first(shape);
-}
+void PhysicsWorld::RemoveCollisionShape(CollisionShape* shape) { collisionShapes_.erase_first(shape); }
 
-void PhysicsWorld::AddConstraint(Constraint* constraint)
-{
-    constraints_.push_back(constraint);
-}
+void PhysicsWorld::AddConstraint(Constraint* constraint) { constraints_.push_back(constraint); }
 
-void PhysicsWorld::RemoveConstraint(Constraint* constraint)
-{
-    constraints_.erase_first(constraint);
-}
+void PhysicsWorld::RemoveConstraint(Constraint* constraint) { constraints_.erase_first(constraint); }
 
 void PhysicsWorld::AddDelayedWorldTransform(const DelayedWorldTransform& transform)
 {
@@ -774,15 +963,9 @@ void PhysicsWorld::DrawDebugGeometry(bool depthTest)
     DrawDebugGeometry(debug, depthTest);
 }
 
-void PhysicsWorld::SetDebugRenderer(DebugRenderer* debug)
-{
-    debugRenderer_ = debug;
-}
+void PhysicsWorld::SetDebugRenderer(DebugRenderer* debug) { debugRenderer_ = debug; }
 
-void PhysicsWorld::SetDebugDepthTest(bool enable)
-{
-    debugDepthTest_ = enable;
-}
+void PhysicsWorld::SetDebugDepthTest(bool enable) { debugDepthTest_ = enable; }
 
 void PhysicsWorld::CleanupGeometryCache()
 {
@@ -790,6 +973,85 @@ void PhysicsWorld::CleanupGeometryCache()
     CleanupGeometryCacheImpl(triMeshCache_);
     CleanupGeometryCacheImpl(convexCache_);
     CleanupGeometryCacheImpl(gimpactTrimeshCache_);
+}
+
+void PhysicsWorld::SetThreadCount(int numThreads)
+{
+#if BT_THREADSAFE
+    int newNumThreads = Min(numThreads, int(BT_MAX_THREAD_COUNT));
+    newNumThreads = Max(1, newNumThreads);
+    int oldNumThreads = btGetTaskScheduler()->getNumThreads();
+    // only call when the thread count is different
+    if (newNumThreads != oldNumThreads)
+    {
+        btGetTaskScheduler()->setNumThreads(newNumThreads);
+    }
+    threadCount_ = btGetTaskScheduler()->getNumThreads();
+#endif
+}
+
+void PhysicsWorld::SetMinBatchSize(int size)
+{
+    size = Max(size, 1);
+    size = Min(size, 1000);
+
+    minBatchSize_ = size;
+    maxBatchSize_ = Max(minBatchSize_, maxBatchSize_);
+
+    btSequentialImpulseConstraintSolverMt::s_minBatchSize = minBatchSize_;
+    btSequentialImpulseConstraintSolverMt::s_maxBatchSize = maxBatchSize_;
+}
+
+void PhysicsWorld::SetMaxBatchSize(int size)
+{
+    size = Max(size, 1);
+    size = Min(size, 1000);
+
+    maxBatchSize_ = size;
+    minBatchSize_ = Min(minBatchSize_, maxBatchSize_);
+
+    btSequentialImpulseConstraintSolverMt::s_minBatchSize = minBatchSize_;
+    btSequentialImpulseConstraintSolverMt::s_maxBatchSize = maxBatchSize_;
+}
+
+void PhysicsWorld::SetIslandBatchingThreshold(int count)
+{
+    count = Max(count, 1);
+    count = Min(count, 2000);
+
+    islandBatchingThreshold_ = count;
+
+    btSequentialImpulseConstraintSolverMt::s_minimumContactManifoldsForBatching = islandBatchingThreshold_;
+}
+
+void PhysicsWorld::SetLeastSquaresResidualThreshold(float threshold)
+{
+    threshold = Max(threshold, 0);
+    threshold = Min(threshold, 0.25f);
+
+    leastSquaresResidualThreshold_ = threshold;
+
+    world_->getSolverInfo().m_leastSquaresResidualThreshold = threshold;
+}
+
+void PhysicsWorld::SetAllowNestedParallelForLoops(bool enable)
+{
+    btSequentialImpulseConstraintSolverMt::s_allowNestedParallelForLoops = enable;
+}
+
+int PhysicsWorld::GetThreadCount() const { return threadCount_; }
+
+int PhysicsWorld::GetMinBatchSize() const { return minBatchSize_; }
+
+int PhysicsWorld::GetMaxBatchSize() const { return maxBatchSize_; }
+
+int PhysicsWorld::GetIslandBatchingThreshold() const { return islandBatchingThreshold_; }
+
+float PhysicsWorld::GetLeastSquaresResidualThreshold() const { return leastSquaresResidualThreshold_; }
+
+bool PhysicsWorld::GetAllowNestedParallelForLoops() const
+{
+    return btSequentialImpulseConstraintSolverMt::s_allowNestedParallelForLoops;
 }
 
 void PhysicsWorld::OnSceneSet(Scene* scene)
@@ -859,7 +1121,8 @@ void PhysicsWorld::SendCollisionEvents()
         for (int i = 0; i < numManifolds; ++i)
         {
             btPersistentManifold* contactManifold = collisionDispatcher_->getManifoldByIndexInternal(i);
-            // First check that there are actual contacts, as the manifold exists also when objects are close but not touching
+            // First check that there are actual contacts, as the manifold exists also when objects are close but not
+            // touching
             if (!contactManifold->getNumContacts())
                 continue;
 
@@ -877,16 +1140,16 @@ void PhysicsWorld::SendCollisionEvents()
                 continue;
             if (bodyA->GetCollisionEventMode() == COLLISION_NEVER || bodyB->GetCollisionEventMode() == COLLISION_NEVER)
                 continue;
-            if (bodyA->GetCollisionEventMode() == COLLISION_ACTIVE && bodyB->GetCollisionEventMode() == COLLISION_ACTIVE &&
-                !bodyA->IsActive() && !bodyB->IsActive())
+            if (bodyA->GetCollisionEventMode() == COLLISION_ACTIVE && bodyB->GetCollisionEventMode() == COLLISION_ACTIVE
+                && !bodyA->IsActive() && !bodyB->IsActive())
                 continue;
 
             WeakPtr<RigidBody> bodyWeakA(bodyA);
             WeakPtr<RigidBody> bodyWeakB(bodyB);
 
-            // First only store the collision pair as weak pointers and the manifold pointer, so user code can safely destroy
-            // objects during collision event handling
-            ea::pair<WeakPtr<RigidBody>, WeakPtr<RigidBody> > bodyPair;
+            // First only store the collision pair as weak pointers and the manifold pointer, so user code can safely
+            // destroy objects during collision event handling
+            ea::pair<WeakPtr<RigidBody>, WeakPtr<RigidBody>> bodyPair;
             if (bodyA < bodyB)
             {
                 bodyPair = ea::make_pair(bodyWeakA, bodyWeakB);
@@ -899,8 +1162,7 @@ void PhysicsWorld::SendCollisionEvents()
             }
         }
 
-        for (auto i = currentCollisions_.begin();
-             i != currentCollisions_.end(); ++i)
+        for (auto i = currentCollisions_.begin(); i != currentCollisions_.end(); ++i)
         {
             RigidBody* bodyA = i->first.first;
             RigidBody* bodyB = i->first.second;
@@ -1030,8 +1292,7 @@ void PhysicsWorld::SendCollisionEvents()
     {
         physicsCollisionData_[PhysicsCollisionEnd::P_WORLD] = this;
 
-        for (auto
-                 i = previousCollisions_.begin(); i != previousCollisions_.end(); ++i)
+        for (auto i = previousCollisions_.begin(); i != previousCollisions_.end(); ++i)
         {
             if (!currentCollisions_.contains(i->first))
             {
@@ -1045,10 +1306,11 @@ void PhysicsWorld::SendCollisionEvents()
                 // Skip collision event signaling if both objects are static, or if collision event mode does not match
                 if (bodyA->GetMass() == 0.0f && bodyB->GetMass() == 0.0f)
                     continue;
-                if (bodyA->GetCollisionEventMode() == COLLISION_NEVER || bodyB->GetCollisionEventMode() == COLLISION_NEVER)
+                if (bodyA->GetCollisionEventMode() == COLLISION_NEVER
+                    || bodyB->GetCollisionEventMode() == COLLISION_NEVER)
                     continue;
-                if (bodyA->GetCollisionEventMode() == COLLISION_ACTIVE && bodyB->GetCollisionEventMode() == COLLISION_ACTIVE &&
-                    !bodyA->IsActive() && !bodyB->IsActive())
+                if (bodyA->GetCollisionEventMode() == COLLISION_ACTIVE
+                    && bodyB->GetCollisionEventMode() == COLLISION_ACTIVE && !bodyA->IsActive() && !bodyB->IsActive())
                     continue;
 
                 Node* nodeA = bodyA->GetNode();
@@ -1098,4 +1360,4 @@ void RegisterPhysicsLibrary(Context* context)
     KinematicCharacterController::RegisterObject(context);
 }
 
-}
+} // namespace Urho3D
