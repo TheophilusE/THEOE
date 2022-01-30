@@ -1,4 +1,5 @@
 //
+// Copyright (c) 2020-2022 Theophilus Eriata.
 // Copyright (c) 2008-2020 the Urho3D project.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -64,7 +65,7 @@ KinematicCharacterController::~KinematicCharacterController()
 
 void KinematicCharacterController::RegisterObject(Context* context)
 {
-    context->RegisterFactory<KinematicCharacterController>();
+    context->RegisterFactory<KinematicCharacterController>("Physics");
 
     URHO3D_ACCESSOR_ATTRIBUTE("Gravity", GetGravity, SetGravity, Vector3, Vector3(0.0f, -14.0f, 0.0f), AM_DEFAULT);
     URHO3D_ATTRIBUTE("Collision Layer", int, colLayer_, 1, AM_DEFAULT);
