@@ -95,6 +95,57 @@ btConstraintSolver* createSolverByType(SolverType t)
     return NULL;
 }
 
+static int gNumIslands = 0;
+
+///
+/// CustomParallelIslandDispatch -- wrap default parallel dispatch for profiling and to get the number of simulation islands
+//
+void CustomParallelIslandDispatch(btAlignedObjectArray<btSimulationIslandManagerMt::Island*>* islandsPtr,
+    const btSimulationIslandManagerMt::SolverParams& solverParams)
+{
+    URHO3D_PROFILE("kRecordDispatchIslands");
+    gNumIslands = islandsPtr->size();
+    btSimulationIslandManagerMt::parallelIslandDispatch(islandsPtr, solverParams);
+}
+
+///
+/// CustomDiscreteDynamicsWorld -- subclassed for profiling purposes
+///
+ATTRIBUTE_ALIGNED16(class)
+CustomDiscreteDynamicsWorld : public btDiscreteDynamicsWorldMt
+{
+    typedef btDiscreteDynamicsWorldMt ParentClass;
+
+protected:
+    virtual void predictUnconstraintMotion(btScalar timeStep) BT_OVERRIDE
+    {
+        URHO3D_PROFILE("kRecordPredictUnconstrainedMotion");
+        ParentClass::predictUnconstraintMotion(timeStep);
+    }
+    virtual void createPredictiveContacts(btScalar timeStep) BT_OVERRIDE
+    {
+        URHO3D_PROFILE("kRecordCreatePredictiveContacts");
+        ParentClass::createPredictiveContacts(timeStep);
+    }
+    virtual void integrateTransforms(btScalar timeStep) BT_OVERRIDE
+    {
+        URHO3D_PROFILE("kRecordIntegrateTransforms");
+        ParentClass::integrateTransforms(timeStep);
+    }
+
+public:
+    BT_DECLARE_ALIGNED_ALLOCATOR();
+
+    CustomDiscreteDynamicsWorld(btDispatcher * dispatcher, btBroadphaseInterface * pairCache,
+        btConstraintSolverPoolMt * constraintSolver, btSequentialImpulseConstraintSolverMt * constraintSolverMt,
+        btCollisionConfiguration * collisionConfiguration)
+        : btDiscreteDynamicsWorldMt(dispatcher, pairCache, constraintSolver, constraintSolverMt, collisionConfiguration)
+    {
+        btSimulationIslandManagerMt* islandMgr = static_cast<btSimulationIslandManagerMt*>(m_islandManager);
+        islandMgr->setIslandDispatchFunction(CustomParallelIslandDispatch);
+    }
+};
+
 ///
 /// btTaskSchedulerManager -- manage a number of task schedulers so we can switch between them
 ///
@@ -107,6 +158,8 @@ public:
     btTaskSchedulerManager() {}
     void init()
     {
+        URHO3D_PROFILE("Physics Task Scheduler Init");
+
         addTaskScheduler(btGetSequentialTaskScheduler());
 #if BT_THREADSAFE
         if (btITaskScheduler* ts = btCreateDefaultTaskScheduler())
@@ -139,6 +192,8 @@ public:
 
     void addTaskScheduler(btITaskScheduler* ts)
     {
+        URHO3D_PROFILE("Add Physics Task Scheduler");
+
         if (ts)
         {
 #if BT_THREADSAFE
@@ -269,6 +324,7 @@ PhysicsWorld::PhysicsWorld(Context* context)
     , maxBatchSize_(btSequentialImpulseConstraintSolverMt::s_maxBatchSize)
     , leastSquaresResidualThreshold_(0)
 {
+    gNumIslands = 0;
     multithreadCapable_ = false;
 
     if (gTaskSchedulerMgr.getNumTaskSchedulers() == 0)
@@ -288,8 +344,6 @@ PhysicsWorld::PhysicsWorld(Context* context)
 
     if (multithreadedWorld_ && multithreadCapable_)
     {
-        URHO3D_LOGINFO("Physics World Initialization With Multi-Thread Enabled");
-        URHO3D_LOGINFO("Physics World Thread Count {}", gTaskSchedulerMgr.getTaskScheduler(1)->getNumThreads());
 
 #if BT_THREADSAFE
         if (collisionDispatcher_)
@@ -337,16 +391,18 @@ PhysicsWorld::PhysicsWorld(Context* context)
             solverMt = new btSequentialImpulseConstraintSolverMt();
         }
 
-        world_ = ea::make_unique<btDiscreteDynamicsWorldMt>(
+        world_ = ea::make_unique<CustomDiscreteDynamicsWorld>(
             collisionDispatcher_.get(), broadphase_.get(), solverPool, solverMt, collisionConfiguration_);
+
+        world_->getSimulationIslandManager()->setSplitIslands(true);
+        SetAllowNestedParallelForLoops(true);
+
         btAssert(btGetTaskScheduler() != NULL);
 #endif // #if BT_THREADSAFE
     }
     else
     {
         // single threaded world
-
-        URHO3D_LOGINFO("Physics World Initialization With Multi-Thread Enabled");
 
         if (PhysicsWorld::config.collisionConfig_)
             collisionConfiguration_ = PhysicsWorld::config.collisionConfig_;
@@ -380,6 +436,8 @@ PhysicsWorld::PhysicsWorld(Context* context)
     world_->setInternalTickCallback(InternalTickCallback, static_cast<void*>(this), false);
     world_->getSolverInfo().m_solverMode = gSolverMode;
     world_->getSolverInfo().m_numIterations = Max(1, solverIterations_);
+    world_->getSolverInfo().m_splitImpulse = true;
+    world_->setSynchronizeAllMotionStates(true);
 
     // Add ghost pair callback
     ghostPairCallback_ = new btGhostPairCallback();
@@ -423,7 +481,7 @@ void PhysicsWorld::RegisterObject(Context* context)
 {
     context->RegisterFactory<PhysicsWorld>(SUBSYSTEM_CATEGORY);
 
-    URHO3D_ATTRIBUTE("Multithread World", bool, multithreadedWorld_, true, AM_DEFAULT);
+    URHO3D_ATTRIBUTE("Multithread World", bool, multithreadedWorld_, true, AM_READONLY);
 
     URHO3D_MIXED_ACCESSOR_ATTRIBUTE("Gravity", GetGravity, SetGravity, Vector3, DEFAULT_GRAVITY, AM_DEFAULT);
     URHO3D_ATTRIBUTE("Physics FPS", int, fps_, DEFAULT_FPS, AM_DEFAULT);
